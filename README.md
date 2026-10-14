@@ -19,10 +19,9 @@ The client exposes local **HTTP** and **SOCKS5** ports; the browser (or any app)
 | **Last-resort data path** | If no Lantern server is reachable at all, browser traffic falls back to the upstream proxy so the local ports keep answering instead of resetting every connection. |
 | **Poisoned-DNS handling** | When local DNS answers with a private IP, the client keeps the hostname so it is resolved remotely by the proxy server instead of dialing an unreachable address. |
 | **Clear startup diagnostics** | The client verifies the *data path* with a real request through its own proxy and reports `Data path OK` / `Data path is NOT working` (plus the egress IP), instead of only saying the ports are open. |
-| **Domain fronting is always available** and never silently degrades, with `front scan` / `front import` / `front test` subcommands: the built-in IP scanner finds working IP/SNI pairs, `import` turns them into a local fronting config, `test` verifies it end-to-end. | Config fetching must survive when every Lantern domain is blocked. |
 | **`--upstream-proxy` also serves the control plane** (config + auth) | One flag covers config fetch, server dialing and the data-path fallback. |
 | **Server list with locations, and server pinning** | `servers` lists every server in the current config with its country and city; `start --server <name>` pins the connection to one server and ignores all the others. |
-| **`update` refreshes the server list on demand, over the transport you pick** | `lantern update --via fronting` (default `auto` tries fronting → upstream → direct) fetches a fresh server list with the built-in IP scanner keeping fronting alive, and saves it to `user.conf` so `start` uses it immediately. |
+| **`update` refreshes the server list on demand** | `lantern update --via upstream|direct|auto` fetches a fresh server list and saves it to `user.conf` so `start` uses it immediately. |
 
 ## Requirements
 
@@ -81,7 +80,7 @@ INFO     Traffic leaves this machine through IP 31.171.100.110
 `servers` shows every server in the current config with its geographic location (as reported by
 Lantern's own config). Without `--refresh` it reads the cached list from `<data-path>/user.conf`
 (written by any successful `start`); `--refresh` fetches a fresh list through the control plane
-using the same flags as `start` (`--upstream-proxy`, fronting config, …):
+using the same flags as `start` (`--upstream-proxy`, …):
 
 ```shell
 ./bin/lantern --data-path data servers --refresh
@@ -112,70 +111,41 @@ the config, and warns with the list of available names if it does not. Note the 
 pinning there is **no failover** — if that server is blocked or dies, the connection fails until
 you pick another one or drop the flag.
 
-## Updating the server list and scanning for fronting IPs
+## Updating the server list
 
 `update` tells the client to refresh its server list right now — pick the transport yourself:
 
 ```shell
-./bin/lantern --data-path data update --via fronting   # over domain fronting (default)
 ./bin/lantern --data-path data update --via upstream   # through --upstream-proxy
 ./bin/lantern --data-path data update --via direct     # direct connection
-./bin/lantern --data-path data update                  # auto: fronting → upstream → direct
+./bin/lantern --data-path data update                  # auto: upstream (if set) → direct
 ./bin/lantern --data-path data update --json           # machine-readable
 ./bin/lantern --data-path data update --check          # also probe which servers are reachable
 ```
 
 The fetched list is saved to `<data-path>/user.conf`, so a following `start` (or `servers` without
 `--refresh`) uses it immediately — even if the config service stays unreachable afterwards.
-
-Fronting endpoints decay: CDN edges rotate and filtering blocks working IP/SNI pairs over time.
-`update --via fronting` (and the fronting leg of `auto`) is therefore **self-healing**: if the
-current fronting config no longer works, it runs a quick built-in scan (sampled to
-`--scan-ips 15000` IPs), keeps the `--scan-top 20` fastest pairs, writes them to
-`<data-path>/fronted-local.yaml.gz` and retries through the fresh endpoints. `--rescan` forces
-that refresh even when the current config still works; `--no-scan` disables the fallback entirely
-(e.g. for fast scripted runs).
-
-When fronting stops working (the CDN IPs your fronting config points at die), the built-in IP
-scanner finds fresh ones — no external scanner needed:
-
-```shell
-./bin/lantern --data-path data front scan --build
-```
-
-This walks the built-in Akamai ranges (sampled down to `--max-ips 60000` IPs), TCP-probes port
-443, TLS-handshakes each live IP with the provider's masquerade domains plus alternate Akamai
-shared hostnames (`a.akamaized.net`, `a.akamaihd.net` — so one SNI-blocked hostname doesn't
-starve the scan), vets the surviving
-IP/SNI pairs end-to-end, and with `--build` writes the result straight to
-`<data-path>/fronted-local.yaml.gz`. Narrow the scan or target your own ranges with `--ranges
-23.32.0.0/11,104.64.0.0/10` or `--cidrs ranges.txt`; `--sni` / `--snis` override the SNI candidates.
-Without `--build` the pairs land in `<data-path>/scan-pairs.json`, ready for
-`front import --pairs`. Run `front test` afterwards to verify fronting end-to-end, then
-`update --via fronting`.
+`--via upstream` requires `--upstream-proxy`; if every transport fails, the hint points at passing
+`--upstream-proxy socks5://127.0.0.1:<port-of-a-working-proxy>`.
 
 ## Useful flags
 
 | Flag | Meaning |
 |---|---|
 | `--upstream-proxy` | `socks5://` / `http://` / `https://` proxy used for config fetch, for reaching Lantern's (possibly IP-blocked) servers, and as the last-resort data path |
-| `--data-path` | Where config, logs and the local fronting config live |
-| `--fronted-config` | Explicit path to a local `fronted.yaml.gz` (auto-detected otherwise) |
+| `--data-path` | Where config, logs and data live |
 | `--with-proxyless` / `--enable-dnstt` | Enable smart dialing / the DNS tunnel (off by default) |
 | `--server <name>` | Pin `start` to a single server by name (see the `servers` command) |
-| `update [--via fronting\|upstream\|direct\|auto] [--json] [--check]` | Refresh the cached server list over the chosen transport; auto-scans fresh fronting endpoints when fronting fails (`--rescan` / `--no-scan` / `--scan-ips` / `--scan-top` control that); `--check` probes which servers are reachable |
+| `update [--via upstream\|direct\|auto] [--json] [--check]` | Refresh the cached server list over the chosen transport; `--check` probes which servers are reachable |
 | `servers [--refresh] [--json] [--check]` | List Lantern servers and their country/city; `--check` adds per-server reachability |
-| `front scan` | Built-in IP scanner: find working fronting endpoints (IP/SNI pairs); `--build` writes the fronting config |
-| `front import` / `front test` | Build a fronting config from scanned pairs / verify fronting end-to-end |
 
 Run `./bin/lantern --help` for the full list.
 
 ## Documentation
 
-The **[Persian guide](./README-fa.md)** covers the full workflow: scanning IP ranges for
-domain-fronting endpoints, building and testing the fronting config, refreshing the server list
-with `update`, diagnosing dead servers, and the meaning of every log line (`i/o timeout`,
-`Fell back to the upstream proxy`, `keeping the hostname …`).
+The **[Persian guide](./README-fa.md)** covers the full workflow: refreshing the server list
+with `update`, pinning a server, diagnosing dead servers, and the meaning of every log line
+(`i/o timeout`, `Fell back to the upstream proxy`, `keeping the hostname …`).
 
 ## Credits and license
 

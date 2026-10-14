@@ -1,143 +1,106 @@
+name: Build & Release
+
+# GitHub builds lantern-headless-iran itself for Linux and Windows (amd64):
+#   • push to main / PR → build + upload artifacts
+#   • tag like v1.0.0   → build + create a GitHub Release with the same
+#                          binaries (what the MischiefPingu in-app updater
+#                          downloads)
+
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
-  id-token: "write"
 
 jobs:
   build:
-    runs-on:
-      group: large-runners
+    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
           - goos: linux
-            goarch: arm64
-            image: arm-debian11
-          - goos: linux
             goarch: amd64
-            image: main-debian11
-          - goos: linux
-            goarch: mips64
-            image: mips-debian11
-          - goos: windows
-            goarch: 386
-            image: main-debian11
+            cc: gcc
+            cxx: g++
+            asset: lantern-headless-linux-amd64
           - goos: windows
             goarch: amd64
-            image: main-debian11
-          - goos: darwin
-            goarch: arm64
-            image: darwin-arm64-debian11
-          - goos: darwin
-            goarch: amd64
-            image: darwin-debian11
+            cc: x86_64-w64-mingw32-gcc
+            cxx: x86_64-w64-mingw32-g++
+            asset: lantern-headless-windows-amd64.exe
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Mandatory to use the extract version from tag
-      - name: Build ${{ matrix.goos }} ${{ matrix.goarch }}
+
+      # CGO is required (go-llsqlite/crawshaw, go-libutp), so the Windows
+      # binary is cross-compiled with MinGW instead of a native Windows
+      # runner. Both CC and CXX must point at the MinGW toolchain.
+      - name: Install MinGW for the Windows cross-build
+        if: matrix.goos == 'windows'
         run: |
-          make ARCH=${{ matrix.goarch }} PLATFORM=${{ matrix.goos }} IMAGE=docker.elastic.co/beats-dev/golang-crossbuild:1.22.4-${{ matrix.image }} build
-      - name: Archive production artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: lantern-headless-${{ matrix.goarch }}-${{ matrix.goos }}
-          path: build/lantern-headless-${{ matrix.goarch }}-${{ matrix.goos }}
-          if-no-files-found: "error"
-          retention-days: 1
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64
 
-  sign:
-    runs-on: windows-latest
-    needs: build
-    steps:
-      - name: Download production artifacts
-        uses: actions/download-artifact@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          path: build
-          pattern: "lantern-headless-*-windows"
-          merge-multiple: true
+          go-version-file: go.mod
 
-#      - name: Sign EXE with Azure Code Signing
-#        uses: getlantern/trusted-signing-action@main
-#        with:
-#          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-#          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-#          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-#          endpoint: https://wus2.codesigning.azure.net/
-#          code-signing-account-name: code-signing
-#          certificate-profile-name: Lantern
-#          files-folder: ${{ github.workspace }}\build
-#          file-digest: SHA256
-#          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-#          timestamp-digest: SHA256
-      - name: Archive production artifacts
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "1"
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="0.0.0-dev+$(echo -n "${GITHUB_SHA}" | cut -c1-7)"
+          fi
+          STAMP="$(date -u +%Y%m%d.%H%M%S)"
+          MODULE="github.com/oldblocker/lantern-headless-iran"
+          mkdir -p dist
+          go build -buildvcs=false -trimpath \
+            -ldflags="-s -w \
+              -X ${MODULE}/shared.ApplicationVersion=${VERSION} \
+              -X ${MODULE}/shared.RevisionDate=${STAMP} \
+              -X ${MODULE}/shared.BuildDate=${STAMP}" \
+            -o "dist/${{ matrix.asset }}" .
+          echo "Built $(ls -la dist/)"
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: lantern-headless-amd64-windows
-          path: build/lantern-headless-amd64-windows
-          overwrite: true
-          if-no-files-found: "error"
-          retention-days: 1
-      - name: Archive production artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: lantern-headless-386-windows
-          path: build/lantern-headless-386-windows
-          overwrite: true
-          if-no-files-found: "error"
-          retention-days: 1
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+          if-no-files-found: error
+          retention-days: 14
 
   release:
-    needs: sign
-    runs-on:
-      group: large-runners
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Mandatory to use the extract version from tag
-      - name: Download production artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          path: build
+          path: dist
           merge-multiple: true
-      - name: Setup dependencies
-        run: |
-          curl -O -L "https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64"
-          mv cosign-linux-amd64 /usr/local/bin/cosign
-          chmod +x /usr/local/bin/cosign
-          curl -sSfL https://raw.githubusercontent.com/anchore/quill/main/install.sh | sh -s -- -b /usr/local/bin
-          sudo apt-get update
-          sudo apt-get install -y msitools genisoimage wixl
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
         with:
-          username: getlantern
-          password: ${{ secrets.DOCKER_PASSWORD }}
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser-pro
-          version: "~> 2"
-          args: release --clean --verbose
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
-          AUR_KEY: ${{ secrets.AUR_KEY }}
-          COSIGN_KEY: ${{ secrets.COSIGN_KEY }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-          FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
-          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
-          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
-          QUILL_LOG_LEVEL: "debug"
-          MACOS_KEY_ID: ${{ secrets.MACOS_KEY_ID }}
-          MACOS_ISSUER_ID: ${{ secrets.MACOS_ISSUER_ID }}
-          MACOS_P8: ${{ secrets.MACOS_P8 }}
-          TAP_BUCKET_TOKEN: ${{ secrets.TAP_BUCKET_TOKEN }}
+          files: |
+            dist/lantern-headless-linux-amd64
+            dist/lantern-headless-windows-amd64.exe
+          generate_release_notes: true

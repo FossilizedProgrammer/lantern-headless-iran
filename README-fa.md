@@ -1,8 +1,7 @@
-# کلاینت لنسرن بدون رابط گرافیکی (فورک با پشتیبانی Domain Fronting)
+# کلاینت لنسرن بدون رابط گرافیکی
 
-این فورک از [`lantern-headless-client`](https://github.com/getlantern/lantern-headless-client) است که برای
-شبکه‌های فیلترشده (مانند ایران) پیکربندی شده تا کلاینت **با domain fronting** کانفیگ و سرورهای لنسرن را پیدا کند،
-بدون آن‌که نیازی به DNS یا دسترسی مستقیم به دامنه‌های لنسرن داشته باشد.
+این فورک از [`lantern-headless-client`](https://github.com/getlantern/lantern-headless-client) است: کلاینت با
+`--upstream-proxy` به کانفیگ و سرورهای لنسرن می‌رسد و ترافیک کاربر را از شبکهٔ لنسرن عبور می‌دهد.
 
 ## تفاوت با آپ‌استریم
 
@@ -21,18 +20,14 @@
 - **رفع DNS مسموم**: اگر DNS محلی یک دامنه عمومی را به IP خصوصی برگرداند (مثلاً `youtube.com → 10.10.34.36`)،
   کلاینت دیگر آن IP را مستقیم نمی‌زند و نام دامنه را نگه می‌دارد تا سرور پروکسی (یا upstream) خودش resolve کند؛
   قبلاً چنین درخواست‌هایی با `connection reset` شکست می‌خوردند.
-- **فرمان‌های جدید `front scan`، `front import` و `front test`**: اسکنر IP داخلی جفت‌های IP/SNI سالم را خودش
-  پیدا می‌کند (بدون نیاز به اسکنر خارجی)، `import` از آن‌ها کانفیگ محلی فرانتینگ می‌سازد و `test` فرانتینگ را
-  سرتاسری تست می‌کند.
 - **فرمان جدید `servers` و پرچم `--server`**: فهرست همهٔ سرورهای کانفیگ به‌همراه کشور و شهرشان، و امکان
   قفل‌کردن اتصال به یک سرور مشخص (به‌جای انتخاب خودکار توسط multi-armed bandit) — توضیح در بخش
   «فهرست سرورها و اتصال به یک سرور مشخص».
-- **فرمان جدید `update`**: به‌روزرسانی دستی فهرست سرورها با انتخاب روش اتصال — فرانتینگ، پروکسی آپ‌استریم یا
-  اتصال مستقیم (`--via fronting|upstream|direct|auto`). نتیجه در `user.conf` ذخیره می‌شود و `start` بلافاصله
-  از آن استفاده می‌کند.
+- **فرمان جدید `update`**: به‌روزرسانی دستی فهرست سرورها با انتخاب روش اتصال — آپ‌استریم، اتصال مستقیم یا
+  خودکار (`--via upstream|direct|auto`). نتیجه در `user.conf` ذخیره می‌شود و `start` بلافاصله از آن
+  استفاده می‌کند.
 - **رفع مشکلات گواهی/ارسال SNI**: اتصال‌ها همیشه SNI می‌فرستند (لبه‌های Akamai اتصال بدون SNI را reset می‌کنند)،
-  و در کنار `trustedcas` کانفیگ، از trust store سیستم هم به‌عنوان fallback استفاده می‌شود (ریشه
-  `DigiCert Global Root G3` هم به کانفیگ تولیدی اضافه شده است).
+  و در کنار `trustedcas` کانفیگ، از trust store سیستم هم به‌عنوان fallback استفاده می‌شود.
 - masqueradeهای CloudFront حذف می‌شوند (دیگر فرانتینگ را قبول نمی‌کند: `421 Misdirected Request`).
 
 ## پیش‌نیازها
@@ -60,90 +55,16 @@ make build-internal PLATFORM=linux ARCH=amd64 IMAGE=none VERSION=1.0.0
 
 ## گردش کار پیشنهادی
 
-### ۱) یافتن جفت‌های IP/SNI
-
-**راه اول — اسکنر داخلی (بدون نیاز به ابزار بیرونی):**
-
-```shell
-./bin/lantern front scan --build
-```
-
-این فرمان بازه‌های IP پیش‌فرض Akamai را (نمونه‌گیری‌شده تا `--max-ips 60000` IP) اسکن می‌کند: به پورت ۴۴۳ وصل
-می‌شود، با هر IP زنده TLS handshake با SNI دامنه‌های masquerade ارائه‌دهنده **به‌همراه نام‌های مشترک دیگر
-لبه‌های آکامای** (`a.akamaized.net`، `a.akamaihd.net` — تا اگر یکی مسدود بود، اسکن قفل نکند) انجام می‌دهد و
-جفت‌های سالم را سرتاسری vet می‌کند. با `--build` خروجی مستقیم در `<data-path>/fronted-local.yaml.gz` نوشته می‌شود؛
-بدون آن جفت‌ها در `<data-path>/scan-pairs.json` ذخیره می‌شوند.
-
-پرچم‌های مهم:
-
-| پرچم | پیش‌فرض | توضیح |
-|---|---|---|
-| `--ranges` | بازه‌های داخلی Akamai | بازه‌های CIDR یا IPهای تکی، جدا با کاما (مثلاً `23.32.0.0/11,104.64.0.0/10`) |
-| `--cidrs` | — | فایل با هر بازه در یک خط |
-| `--sni` / `--snis` | دامنه‌های masquerade ارائه‌دهنده | SNIهای قابل‌امتحان روی هر IP |
-| `--provider` | `akamai` | ارائه‌دهندهٔ فرانتینگ (TestURL و masqueradeهایش) |
-| `--port` | `443` | پورت اسکن |
-| `--workers` | `300` | تعداد اسکن هم‌زمان |
-| `--tcp-timeout` / `--tls-timeout` | `2` / `5` | timeout اتصال TCP و handshake (ثانیه) |
-| `--timeout` | `15` | timeout هر vet (ثانیه) |
-| `--max-ips` | `60000` | حداکثر IP اسکن‌شده با نمونه‌گیری تصادفی (`0` = همه؛ روی بازه‌های بزرگ خیلی طول می‌کشد) |
-| `--top` | `0` | نگه‌داشتن حداکثر N جفت سریع‌تر |
-| `--out` / `--out-config` | مسیرهای پیش‌فرض داخل data-path | مسیر فایل جفت‌ها / کانفیگ فرانتینگ |
-| `--build` | خاموش | بعد از اسکن، کانفیگ فرانتینگ هم ساخته شود |
-
-**راه دوم — اسکنر خارجی:** جفت‌های `{ip, sni}` را از اسکنر خودتان به‌صورت JSON بگیرید (همان قالبی که
-`front import --pairs` می‌خواند) و به مرحلهٔ بعد بروید.
-
-### ۲) اعتبارسنجی و ساخت کانفیگ محلی
-
-این مرحله فقط برای مسیر اسکنر خارجی لازم است — `front scan --build` خودش کانفیگ را می‌سازد.
-
-```shell
-./bin/lantern front import --pairs pairs.json
-```
-
-هر جفت چند بار در برابر `TestURL` فراخوانی (`fronted-ping.../ping` با انتظار پاسخ ۲۰۲) تست می‌شود و فقط
-جفت‌های سالم در `<data-path>/fronted-local.yaml.gz` ذخیره می‌شوند.
-
-پرچم‌های مهم:
-
-| پرچم | پیش‌فرض | توضیح |
-|---|---|---|
-| `--pairs` | — | فایل JSON جفت‌های IP/SNI |
-| `--ips` / `--snis` | — | دو فایل متنی (به‌صورت ضربدری ترکیب می‌شوند) |
-| `--out` | `<data-path>/fronted-local.yaml.gz` | مسیر خروجی |
-| `--provider` | `akamai` | ارائه‌دهنده‌ای که masqueradeهایش جایگزین می‌شود |
-| `--workers` | `64` | تعداد تست هم‌زمان |
-| `--repeats` | `3` | تعداد تلاش برای هر جفت |
-| `--min-ok` | `2` | حداقل تلاش موفق برای پذیرفته‌شدن |
-| `--timeout` | `15` | timeout هر تلاش (ثانیه) |
-| `--top` | `200` | حداکثر تعداد جفت سالم برای نگه‌داشتن (`0` = همه) |
-| `--keep-original` | خاموش | masqueradeهای اصلی provider هم نگه داشته شوند |
-
-### ۳) تست سرتاسری فرانتینگ
-
-```shell
-./bin/lantern front test
-```
-
-دو تست اجرا می‌شود:
-
-1. `GET globalconfig.flashlightproxy.com/global.yaml.gz` → انتظار `200` با بدنه gzip
-2. `POST df.iantem.io/api/v1/config` → انتظار رسیدن به origin لنسرن (هر پاسخ HTTP)
-
-اگر هر دو PASS شد، Domain Fronting کار می‌کند.
-
-### ۴) به‌روزرسانی فهرست سرورها
+### ۱) به‌روزرسانی فهرست سرورها
 
 فرمان `update` فهرست سرورها را همان لحظه از سرویس کانفیگ لنسرن می‌گیرد و در
 `<data-path>/user.conf` ذخیره می‌کند تا `start` (و `servers`) بلافاصله از آن استفاده کنند. روش اتصال را
 خودتان انتخاب می‌کنید:
 
 ```shell
-./bin/lantern update --via fronting   # از طریق domain fronting (پیش‌فرض)
 ./bin/lantern update --via upstream   # از طریق --upstream-proxy
 ./bin/lantern update --via direct     # اتصال مستقیم
-./bin/lantern update                  # auto: فرانتینگ ← آپ‌استریم ← مستقیم
+./bin/lantern update                  # auto (پیش‌فرض): آپ‌استریم (اگر تعریف شده) ← مستقیم
 ./bin/lantern update --json           # خروجی JSON
 ./bin/lantern update --check          # تست دسترسی‌پذیری هر سرور
 ```
@@ -153,50 +74,36 @@ make build-internal PLATFORM=linux ARCH=amd64 IMAGE=none VERSION=1.0.0
 از طریق `--upstream-proxy` همچنان می‌توانند کار کنند. همین قابلیت برای لیست کش‌شده هم موجوده:
 `servers --check` (و `--json` فیلد `reachable` را می‌دهد).
 
-**خودترمیمی فرانتینگ:** چون جفت‌های IP/SNI زوال‌پذیرند (لبه‌های CDN عوض می‌شوند و فیلترینگ ترکیب‌های
-کارا را به‌مرور بلاک می‌کند)، اگر فرانتینگ با کانفیگ فعلی کار نکند، `update --via fronting` (و مسیر
-فرانتینگ در `auto`) قبل از تسلیم‌شدن **خودش یک اسکن سریع اجرا می‌کند** (نمونه‌گیری تا `--scan-ips 15000`
-IP)، `--scan-top 20` جفت سریع‌تر را در `<data-path>/fronted-local.yaml.gz` می‌نویسد و با endpointهای تازه
-دوباره تلاش می‌کند. با `--rescan` این نوسازی حتی وقتی کانفیگ فعلی کار می‌کند هم اجباری می‌شود؛ با
-`--no-scan` غیرفعال می‌شود (برای اسکریپت‌هایی که باید سریع باشند).
-
 | پرچم | پیش‌فرض | توضیح |
 |---|---|---|
-| `--via` | `auto` | روش اتصال به سرویس کانفیگ: `fronting`، `upstream`، `direct` یا `auto` (به‌ترتیب: فرانتینگ، سپس آپ‌استریم اگر تعریف شده، سپس مستقیم) |
+| `--via` | `auto` | روش اتصال به سرویس کانفیگ: `upstream`، `direct` یا `auto` (به‌ترتیب: آپ‌استریم اگر تعریف شده، سپس مستقیم) |
 | `--timeout` | `45` | timeout هر تلاش (ثانیه) |
 | `--json` | خاموش | چاپ فهرست سرورهای دریافتی به‌صورت JSON |
 | `--check` | خاموش | پروب TCP هر سرور و نمایش وضعیت دسترسی مستقیم (ستون Reachable) |
 | `--config-url` | `https://df.iantem.io/api/v1/config` | URL جایگزین سرویس کانفیگ |
-| `--rescan` | خاموش | حتی وقتی کانفیگ فرانتینگ فعلی کار می‌کند، اول یک اسکن تازه انجام بده |
-| `--no-scan` | خاموش | اسکن خودکار fallback هرگز اجرا نشود |
-| `--scan-ips` | `15000` | تعداد IP نمونه‌گیری‌شده برای اسکن فرانتینگ (`--rescan` یا fallback) |
-| `--scan-top` | `20` | تعداد جفت‌هایی که اسکن در کانفیگ فرانتینگ بازساخته‌شده نگه می‌دارد |
 
-اگر همهٔ روش‌ها شکست بخورند و اسکن خودکار هم جفتی پیدا نکند، کلاینت راهنمایی می‌کند: با
-`front scan --build` و بازه‌های مناسب شبکهٔ خودتان کانفیگ فرانتینگ بسازید یا `--upstream-proxy` بدهید.
-برای `--via upstream` تعریف‌کردن `--upstream-proxy` الزامی است.
+اگر همهٔ روش‌ها شکست بخورند، `--upstream-proxy` را به یک پروکسی سالم (Tor/psiphon/رله کلادفلر) وصل
+کنید — اتصال مستقیم به `df.iantem.io` در ایران معمولاً مسدود است. برای `--via upstream` تعریف‌کردن
+`--upstream-proxy` الزامی است.
 
-### ۵) اجرای کلاینت
+### ۲) اجرای کلاینت
 
 ```shell
-./bin/lantern start --http-proxy-addr 127.0.0.1:18080 --socks-proxy-addr 127.0.0.1:18081
+./bin/lantern --data-path data --upstream-proxy socks5://127.0.0.1:1080 start \
+  --http-proxy-addr 127.0.0.1:18080 --socks-proxy-addr 127.0.0.1:18081
 ```
-
-کلاینت به‌صورت خودکار `<data-path>/fronted-local.yaml.gz` را پیدا می‌کند (یا با
-`--fronted-config /مسیر/فایل` به‌صورت دستی مشخص کنید).
 
 ### پیام‌های راه‌اندازی و معنای واقعی آن‌ها
 
 ```
-SUCCESS  Control plane reachable (config fetched over domain fronting)
+SUCCESS  Control plane reachable (config fetched successfully)
 INFO     Local proxy is listening — SOCKS5: 127.0.0.1:18071  HTTP: 127.0.0.1:18070
 INFO     Verifying the data path with a real request through that proxy...
 SUCCESS  Data path OK — HTTP 204 from https://www.google.com/generate_204 in 803ms
 INFO     Traffic leaves this machine through IP 31.171.100.110
 ```
 
-- **`Control plane reachable`** فقط یعنی کانفیگ از مسیر فرانتینگ رسیده؛ ربطی به ترافیک مرورگر ندارد و
-  بدون `--upstream-proxy` هم چاپ می‌شود.
+- **`Control plane reachable`** فقط یعنی کانفیگ با موفقیت دریافت شده؛ ربطی به ترافیک مرورگر ندارد.
 - **`Local proxy is listening`** فقط یعنی پورت‌ها bind شده‌اند (گوش دادن ≠ کار کردن).
 - **`Data path OK` / `Data path is NOT working`** تنها خطی است که وضعیت واقعی مرورگر را می‌گوید: کلاینت
   واقعاً یک درخواست از خودِ پروکسی محلی می‌زند (۲ هدف × ۳ تا با وقفهٔ ۵ ثانیه). اگر این خط `NOT working`
@@ -242,40 +149,23 @@ sunny-tokyo-02    | 203.0.113.10:443 | https    | JP Japan      | Tokyo
 
 | پرچم | توضیح |
 |---|---|
-| `--data-path` | مسیر نگهداری دیتای کلاینت (کانفیگ، لاگ، فایل فرانتینگ) |
+| `--data-path` | مسیر نگهداری دیتای کلاینت (کانفیگ و لاگ) |
 | `--upstream-proxy` | پروکسی سالم (`socks5://` یا `http://`) برای دریافت کانفیگ، اتصال به سرورهای لنسرن و fallback داده؛ مثلاً `socks5://127.0.0.1:1080` |
-| `--fronted-config` | مسیر دستی `fronted.yaml.gz` محلی |
-| `--fronted-config-url` | URL جایگزین برای به‌روزرسانی کانفیگ فرانتینگ |
 | `--with-proxyless` | فعال‌کردن smart dialer برای درخواست‌های کنترلی (خاموش به‌صورت پیش‌فرض) |
 | `--enable-dnstt` | فعال‌کردن DNS tunnel (نیازمند DoH/DoT سالم) |
 | `--doh-resolver` / `--dot-resolver` | resolver دلخواه برای DNS tunnel |
 | `--server <name>` | قفل‌کردن `start` به یک سرور مشخص بر اساس نام (بخش «فهرست سرورها») |
-| `update [--via …]` | به‌روزرسانی فهرست سرورها با روش دلخواه (فرانتینگ / آپ‌استریم / مستقیم) |
-| `front scan [--build]` | اسکنر IP داخلی برای یافتن لبه‌های سالم فرانتینگ و ساخت کانفیگ |
+| `update [--via …]` | به‌روزرسانی فهرست سرورها با روش دلخواه (آپ‌استریم / مستقیم / خودکار) |
 | `--debug` | لاگ debug |
 | `--quiet` / `--raw` | کنترل خروجی لاگ |
 
 ## عیب‌یابی
 
-- **همه جفت‌ها رد می‌شوند (`Passed 0/N`)**: احتمالاً اسکن را از شبکه‌ای اجرا کرده‌اید که به IPهای CDN دسترسی
-  ندارد یا SNIها گواهی نامعتبر دارند. اسکن را از شبکه آزاد اجرا کنید و لاگ‌ها را با `--debug` ببینید.
-- **`front test` شکست خورد**: اول مطمئن شوید `front scan --build` (یا `front import`) اخیراً اجرا شده
-  (لبه‌های CDN عوض می‌شوند). سپس
-  `lantern-headless.log` داخل `--data-path` را بررسی کنید.
-- **`update` شکست خورد**: وقتی فرانتینگ جواب ندهد، `update` خودش یک اسکن سریع اجرا می‌کند تا endpointهای
-  تازه پیدا کند؛ اگر آن هم جفتی نیافت (پیام `Fallback scan did not help`)، با
-  `front scan --build --ranges … --max-ips …` بازه‌های بیشتری را دستی امتحان کنید یا `--upstream-proxy`
-  بدهید؛ اتصال مستقیم به `df.iantem.io` در ایران معمولاً مسدود است. پیام `HTTP 401/403` یعنی اول
-  `auth login` کنید.
+- **`update` شکست خورد**: اول `--via direct` را امتحان کنید؛ اگر جواب نداد `--upstream-proxy` را به یک
+  پروکسی سالم وصل کنید — اتصال مستقیم به `df.iantem.io` در ایران معمولاً مسدود است. پیام
+  `HTTP 401/403` یعنی اول `auth login` کنید.
 - **`421 Misdirected Request`**: مربوط به CloudFront است؛ این masqueradeها به‌صورت خودکار حذف می‌شوند و فقط
   Akamai استفاده می‌شود.
-- **اتصال reset می‌شود / اسکن هیچ جفتی پیدا نمی‌کند**: در خط آمار اسکن نگاه کنید — اگر `tcp ok` زیاد ولی
-  `tls ok: 0` است، SNI توسط فیلترینگ مسدود شده (معروف‌ترین قربانی: `a248.e.akamai.net`). اسکنر الان به‌صورت
-  پیش‌فرض چند SNI مشترک آکامای را امتحان می‌کند؛ برای SNIهای بیشتر از `--sni` استفاده کنید (هر دامنه‌ای که
-  روی همان CDN میزبانی شده باشد). جفت را با `front import` دوباره تست کنید.
-- **`x509: certificate signed by unknown authority`**: زنجیره گواهی CDN به ریشه‌ای نیاز دارد که در `trustedcas`
-  کانفیگ نیست. `front import` ریشه `DigiCert Global Root G3` را اضافه می‌کند و به‌علاوه در صورت شکست، از
-  trust store سیستم استفاده می‌شود.
 - **`bind: address already in use`**: پورت پروکسی اشغال است؛ پورت دیگری بدهید (`--http-proxy-addr` /
   `--socks-proxy-addr`)؛ مقادیر `:0` پورت تصادفی می‌دهند.
 - **سوکس وصل می‌شود ولی صفحه باز نمی‌شود / `connection reset`**: یعنی سرورهای لنسرن از این شبکه قابل‌دسترس
@@ -285,18 +175,15 @@ sunny-tokyo-02    | 203.0.113.10:443 | https    | JP Japan      | Tokyo
 - **دامنه‌ای مثل `youtube.com` به `10.10.34.36` resolve می‌شود**: DNS محلی مسموم است؛ کلاینت حالا نام دامنه را
   نگه می‌دارد و resolve از سمت سرور پروکسی انجام می‌شود. برای اطمینان در لاگ دنبال
   `keeping the hostname so it is resolved remotely` بگردید.
-- **دریافت کانفیگ طول می‌کشد**: اولین درخواست شامل vet کردن masqueradeهاست (چند ثانیه). اگر هیچ‌وقت تمام
-  نشد، لاگ‌های `HTTP request succeeded name=fronted status=200` را جست‌وجو کنید.
+- **دریافت کانفیگ طول می‌کشد**: اگر هیچ‌وقت تمام نشد، لاگ‌ها را با `--debug` بررسی کنید و `--via direct`
+  را امتحان کنید.
 
 ## ساختار مخزن
 
 - `third_party/flashlight/` و `third_party/fronted/` — نسخه‌های محلی و پچ‌شده ماژول‌های آپ‌استریم
   (`go.mod` با `replace` به آن‌ها اشاره می‌کند)
-- `front.go`, `scan.go`, `update.go`, `servers.go`, `cli.go`, `clientopts.go` — فرمان‌های
-  `front scan` / `front import` / `front test` / `update` /
-  `servers`، پرچم `--server` و گزینه‌های سراسری
-- `mischiefpingu/` — اسکنر مرجع قدیمی (دیگر لازم نیست؛ جای خود را به اسکنر داخلی `front scan` داده است،
-  ولی خروجی JSON آن همچنان ورودی `front import` است)
+- `update.go`, `servers.go`, `cli.go`, `clientopts.go` — فرمان‌های `update` و `servers`، پرچم
+  `--server` و گزینه‌های سراسری
 
 ## مجوز
 

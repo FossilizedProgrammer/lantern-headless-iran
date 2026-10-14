@@ -63,10 +63,10 @@ func serve(cmd *ServeCmd) {
 	opts := []flashlight.Option{
 		flashlight.WithOnSucceedingProxy(func() {
 			onOneProxy.Do(func() {
-				// This only reports the control plane (fetching Lantern's config over
-				// domain fronting). It says nothing about the data path that browser
-				// traffic uses, which is verified separately below.
-				pterm.Success.Printfln("Control plane reachable (config fetched over domain fronting)")
+				// This only reports the control plane (fetching Lantern's config via
+				// the upstream proxy or directly). It says nothing about the data path
+				// that browser traffic uses, which is verified separately below.
+				pterm.Success.Printfln("Control plane reachable (config fetched successfully)")
 				proxyReady <- struct{}{}
 			})
 		}),
@@ -121,7 +121,7 @@ var dataPathTargets = []string{
 // whether browser traffic can actually leave this machine.
 //
 // The startup messages only guarantee that the ports are bound and that the
-// config was fetched over domain fronting; without this check the user is told
+// config was fetched; without this check the user is told
 // "ready" even when every server of the Lantern network is unreachable and
 // every browser request is about to time out.
 func verifyDataPath(httpAddr string) {

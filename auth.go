@@ -109,9 +109,6 @@ func logout() {
 
 func authClientOptions() []auth.Option {
 	var o []auth.Option
-	if p := resolvedFrontedConfigPath(); p != "" {
-		o = append(o, auth.WithFrontedConfig(p))
-	}
 	if args.UpstreamProxy != "" {
 		o = append(o, auth.WithUpstreamProxy(args.UpstreamProxy))
 	}

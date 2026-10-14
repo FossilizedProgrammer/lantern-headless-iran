@@ -18,17 +18,17 @@ func TestUpdatePlanAuto(t *testing.T) {
 	args.UpstreamProxy = ""
 	plan, err := updatePlan(viaAuto)
 	require.NoError(t, err)
-	require.Equal(t, []string{viaFronting, viaDirect}, plan)
+	require.Equal(t, []string{viaDirect}, plan)
 
 	args.UpstreamProxy = "socks5://127.0.0.1:1080"
 	plan, err = updatePlan(viaAuto)
 	require.NoError(t, err)
-	require.Equal(t, []string{viaFronting, viaUpstream, viaDirect}, plan)
+	require.Equal(t, []string{viaUpstream, viaDirect}, plan)
 	args.UpstreamProxy = ""
 }
 
 func TestUpdatePlanExplicit(t *testing.T) {
-	for _, via := range []string{viaFronting, viaUpstream, viaDirect} {
+	for _, via := range []string{viaUpstream, viaDirect} {
 		plan, err := updatePlan(via)
 		require.NoError(t, err)
 		require.Equal(t, []string{via}, plan)
@@ -38,15 +38,10 @@ func TestUpdatePlanExplicit(t *testing.T) {
 func TestUpdatePlanUnknown(t *testing.T) {
 	_, err := updatePlan("carrier-pigeon")
 	require.Error(t, err)
-}
 
-func TestScanFallbackEligible(t *testing.T) {
-	require.True(t, scanFallbackEligible(viaFronting, &UpdateCmd{}))
-	require.True(t, scanFallbackEligible(viaAuto, &UpdateCmd{}))
-	require.False(t, scanFallbackEligible(viaDirect, &UpdateCmd{}))
-	require.False(t, scanFallbackEligible(viaUpstream, &UpdateCmd{}))
-	require.False(t, scanFallbackEligible(viaFronting, &UpdateCmd{NoScan: true}))
-	require.False(t, scanFallbackEligible(viaAuto, &UpdateCmd{NoScan: true}))
+	// the fronting transport was removed
+	_, err = updatePlan("fronting")
+	require.Error(t, err)
 }
 
 func TestTryPlanFirstSuccessStops(t *testing.T) {

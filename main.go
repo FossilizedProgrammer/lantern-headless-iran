@@ -72,8 +72,6 @@ func main() {
 	case args.Serve != nil:
 		readAuth()
 		serve(args.Serve)
-	case args.Front != nil:
-		frontCmd(args.Front)
 	case args.Servers != nil:
 		serversCmd(args.Servers)
 	case args.Update != nil:

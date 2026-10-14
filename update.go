@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -23,7 +22,6 @@ import (
 	commonconfig "github.com/getlantern/common/config"
 	"github.com/getlantern/flashlight/v7/apipb"
 	"github.com/getlantern/flashlight/v7/common"
-	"github.com/getlantern/fronted"
 
 	"github.com/oldblocker/lantern-headless-iran/shared"
 )
@@ -31,7 +29,6 @@ import (
 // Transport methods for `update --via`.
 const (
 	viaAuto     = "auto"
-	viaFronting = "fronting"
 	viaUpstream = "upstream"
 	viaDirect   = "direct"
 )
@@ -68,32 +65,11 @@ func updateServersCmd(cmd *UpdateCmd) {
 
 	pterm.Info.Printfln("Updating the server list from %s (timeout per attempt: %s)", cfgURL, timeout)
 
-	if cmd.Rescan {
-		pterm.Info.Println("--rescan is set; refreshing the fronting config with a quick scan first...")
-		if serr := rebuildFrontingConfigByScan(cmd); serr != nil {
-			pterm.Warning.Printfln("Scan failed; trying the existing fronting config anyway: %s", serr)
-		}
-	}
-
 	out, lastErr := tryPlan(plan, cfgURL, uc, timeout)
-	if !out.ok && scanFallbackEligible(via, cmd) {
-		pterm.Info.Println("All attempts failed — scanning for fresh fronting endpoints before giving up (this can take a few minutes)...")
-		if serr := rebuildFrontingConfigByScan(cmd); serr != nil {
-			pterm.Warning.Printfln("Fallback scan did not help: %s", serr)
-		} else {
-			pterm.Info.Println("Retrying via fronting with the freshly scanned config...")
-			var rerr error
-			out, rerr = tryPlan([]string{viaFronting}, cfgURL, uc, timeout)
-			if !out.ok {
-				lastErr = rerr
-			}
-		}
-	}
-
 	if !out.ok {
 		pterm.Error.Printfln("Could not update the server list: %s", lastErr)
-		pterm.Info.Println("Hints: run `lantern front scan --build` with ranges that work on your network, " +
-			"or pass --upstream-proxy socks5://127.0.0.1:1080 to fetch through a working proxy.")
+		pterm.Info.Println("Hint: pass --upstream-proxy socks5://127.0.0.1:<port-of-a-working-proxy> " +
+			"to fetch through a proxy that already works on your network.")
 		os.Exit(1)
 	}
 
@@ -141,61 +117,19 @@ func tryPlan(plan []string, cfgURL string, uc common.UserConfig, timeout time.Du
 	return updateOutcome{}, lastErr
 }
 
-// scanFallbackEligible reports whether the automatic scan fallback may run:
-// only when the user actually asked for fronting (explicitly or via auto) and
-// has not disabled it with --no-scan.
-func scanFallbackEligible(via string, cmd *UpdateCmd) bool {
-	if cmd.NoScan {
-		return false
-	}
-	return via == viaFronting || via == viaAuto
-}
-
-// rebuildFrontingConfigByScan runs a small built-in scan and writes a fresh
-// local fronting config, so fronting gets a new set of usable endpoints when
-// the old ones have perished. The refreshed file is the one `update`, `start`
-// and `front test` auto-detect.
-func rebuildFrontingConfigByScan(cmd *UpdateCmd) error {
-	base := fronted.EmbeddedConfigBytes()
-	if base == nil {
-		return errors.New("could not read embedded fronting configuration")
-	}
-	results, stats, err := runScanPipeline(&scanOptions{
-		Provider: defaultScanProvider,
-		MaxIPs:   cmd.ScanIPs,
-		Top:      cmd.ScanTop,
-	})
-	if err != nil {
-		return err
-	}
-	if len(results) == 0 {
-		return fmt.Errorf("scan found no working IP/SNI pairs (%d IPs probed)", stats.total)
-	}
-	gz, err := buildFrontedConfig(base, defaultScanProvider, toVettedPairs(results), false)
-	if err != nil {
-		return err
-	}
-	path := defaultFrontedConfigPath()
-	if err := os.WriteFile(path, gz, 0644); err != nil {
-		return err
-	}
-	pterm.Success.Printfln("Fronting config refreshed with %d fresh endpoints (%s)", len(results), path)
-	return nil
-}
-
 // updatePlan turns --via into an ordered list of transports to try.
 func updatePlan(via string) ([]string, error) {
 	switch via {
 	case "", viaAuto:
-		plan := []string{viaFronting}
+		plan := []string{}
 		if args.UpstreamProxy != "" {
 			plan = append(plan, viaUpstream)
 		}
 		return append(plan, viaDirect), nil
-	case viaFronting, viaUpstream, viaDirect:
+	case viaUpstream, viaDirect:
 		return []string{via}, nil
 	default:
-		return nil, fmt.Errorf("unknown method %q (use fronting, upstream, direct or auto)", via)
+		return nil, fmt.Errorf("unknown method %q (use upstream, direct or auto)", via)
 	}
 }
 
@@ -204,10 +138,7 @@ func updatePlan(via string) ([]string, error) {
 // startup: a POST with a protobuf ConfigRequest that returns a protobuf
 // ConfigResponse (204 means "no changes").
 func fetchServerConfig(via, cfgURL string, uc common.UserConfig, timeout time.Duration) (*apipb.ConfigResponse, bool, error) {
-	var (
-		client  *http.Client
-		cleanup = func() {}
-	)
+	var client *http.Client
 	switch via {
 	case viaDirect:
 		client = directClient(timeout)
@@ -217,16 +148,9 @@ func fetchServerConfig(via, cfgURL string, uc common.UserConfig, timeout time.Du
 			return nil, false, err
 		}
 		client = c
-	case viaFronting:
-		c, cl, err := frontingClient(cfgURL, timeout)
-		if err != nil {
-			return nil, false, err
-		}
-		client, cleanup = c, cl
 	default:
 		return nil, false, fmt.Errorf("unknown transport %q", via)
 	}
-	defer cleanup()
 
 	req, err := buildConfigRequest(cfgURL, uc, savedProxyNames())
 	if err != nil {
@@ -283,7 +207,7 @@ func buildConfigRequest(cfgURL string, uc common.UserConfig, proxyNames []string
 	}
 	common.AddCommonHeaders(uc, req)
 	req.Header.Set("Content-Type", "application/x-protobuf")
-	// Prevents intermediate nodes (domain-fronters) from caching the content.
+	// Prevents intermediate proxies from caching the content.
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Close = true
 	return req, nil
@@ -335,43 +259,6 @@ func upstreamClient(proxy string, timeout time.Duration) (*http.Client, error) {
 	}, nil
 }
 
-// frontingClient talks to the config service over domain fronting, using the
-// local fronting config when available and the embedded one otherwise.
-func frontingClient(cfgURL string, timeout time.Duration) (*http.Client, func(), error) {
-	u, err := url.Parse(cfgURL)
-	if err != nil {
-		return nil, nil, fmt.Errorf("invalid config URL %q: %w", cfgURL, err)
-	}
-	opts := []fronted.Option{
-		fronted.WithCacheFile(frontTestCachePath()),
-		fronted.WithHTTPClient(&http.Client{Timeout: 20 * time.Second}),
-	}
-	if p := resolvedFrontedConfigPath(); p != "" {
-		opts = append(opts, fronted.WithLocalConfig(p))
-		pterm.Debug.Printfln("Fronting config: %s", p)
-	} else {
-		pterm.Info.Println("No local fronting config found; using the embedded one (run `lantern front scan --build` for better odds)")
-	}
-	f := fronted.NewFronted(opts...)
-
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	addr := u.Host
-	if u.Port() == "" {
-		addr += ":443"
-	}
-	rt, err := f.NewConnectedRoundTripper(ctx, addr)
-	if err != nil {
-		cancel()
-		f.Close()
-		return nil, nil, fmt.Errorf("fronting dial to %s failed: %w", addr, err)
-	}
-	cleanup := func() {
-		cancel()
-		f.Close()
-	}
-	return &http.Client{Transport: rt, Timeout: timeout}, cleanup, nil
-}
-
 // saveUserConfig persists the fetched server list to <data-path>/user.conf in
 // the same protobuf format flashlight uses, so `start` and `servers` pick it
 // up as the cached list.
@@ -403,6 +290,15 @@ func saveUserConfig(conf *apipb.ConfigResponse) error {
 
 func userConfigPath() string {
 	return filepath.Join(args.DataPath, savedUserConfigName)
+}
+
+// truncate shortens s to at most max runes, appending an ellipsis when cut.
+func truncate(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max]) + "…"
 }
 
 // printUpdated reports the outcome of an update, as a table or JSON.
