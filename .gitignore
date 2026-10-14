@@ -6,3 +6,23 @@ dist/
 lantern-headless-client
 lantern-headless
 lantern-data
+
+# local build output
+/bin/
+
+# runtime data of a local run: device id, auth/session files and logs (may
+# contain IPs and proxy stats) must never be committed
+/data/
+user.conf
+proxystats.csv
+fronted_cache.json
+fronted-local.yaml.gz
+tls_session_states
+bandit
+*.log
+
+# tool / agent metadata
+.freebuff/
+
+# machine-specific runtime device id — never commit
+deviceid/deviceid

@@ -1,4 +1,4 @@
-module github.com/getlantern/lantern-headless-client
+module github.com/oldblocker/lantern-headless-iran
 
 go 1.24.3
 
@@ -11,6 +11,7 @@ require (
 	github.com/getlantern/fronted v0.0.0-20260220001536-2f158428bf15
 	github.com/getlantern/golog v0.0.0-20230503153817-8e72de7e0a65
 	github.com/getlantern/kindling v0.0.0-20260219202502-df15c15dc5fb
+	github.com/goccy/go-yaml v1.19.0
 	github.com/google/uuid v1.6.0
 	github.com/pterm/pterm v0.12.80
 	github.com/stretchr/testify v1.11.1
@@ -151,7 +152,6 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
-	github.com/goccy/go-yaml v1.19.0 // indirect
 	github.com/gofrs/uuid/v5 v5.3.2 // indirect
 	github.com/golang/gddo v0.0.0-20210115222349-20d68f94ee1f // indirect
 	github.com/golang/geo v0.0.0-20250402054851-dc45a1002b83 // indirect
@@ -294,6 +294,8 @@ replace github.com/tetratelabs/wazero => github.com/refraction-networking/wazero
 
 replace github.com/getlantern/lantern-water => github.com/getlantern/lantern-water v0.0.0-20250123195039-121e25011cd3
 
-// replace github.com/getlantern/flashlight/v7 => ../flashlight
+replace github.com/getlantern/flashlight/v7 => ./third_party/flashlight
+
+replace github.com/getlantern/fronted => ./third_party/fronted
 
 //replace github.com/anacrolix/confluence => github.com/anacrolix/confluence v1.15.1-0.20240712051721-b0799bfc4a73

@@ -5,7 +5,7 @@ metadata:
   maintainers:
     - "Lantern Team <dev@getlantern.org>"
   description: Lantern Headless Client
-  homepage: "https://github.com/getlantern/lantern-headless-client"
+  homepage: "https://github.com/oldblocker/lantern-headless-iran"
   license: "GPL"
 
 signs:
@@ -95,7 +95,7 @@ nfpms:
     description: |
       Lantern Headless Client
     vendor: "Brave New Software"
-    homepage: "https://github.com/getlantern/lantern-headless-client"
+    homepage: "https://github.com/oldblocker/lantern-headless-iran"
     license: "GPL"
     contents:
       - src: ./scripts/lantern-headless.service
@@ -156,7 +156,7 @@ dockerhub:
 
 aurs:
   - name: lantern-headless-bin
-    homepage: "https://github.com/getlantern/lantern-headless-client"
+    homepage: "https://github.com/oldblocker/lantern-headless-iran"
     maintainers:
       - "Lantern Team <dev@getlantern.org>"
     description: |

@@ -13,7 +13,7 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/getlantern/appdir"
-	"github.com/getlantern/lantern-headless-client/deviceid"
+	"github.com/oldblocker/lantern-headless-iran/deviceid"
 )
 
 func setupOutput() {
@@ -56,6 +56,7 @@ func setupDataFolder() {
 }
 
 func main() {
+	parseArgs()
 	setupOutput()
 	setupDataFolder()
 	deviceId = deviceid.Get(args.DataPath)
@@ -64,12 +65,19 @@ func main() {
 		_ = logWriter.Close()
 	}(logWriter)
 	ctx := context.Background()
+	applyClientOptions()
 	switch {
 	case args.Auth != nil:
 		authCmd(ctx, args.Auth, args.AuthURL, logWriter)
 	case args.Serve != nil:
 		readAuth()
 		serve(args.Serve)
+	case args.Front != nil:
+		frontCmd(args.Front)
+	case args.Servers != nil:
+		serversCmd(args.Servers)
+	case args.Update != nil:
+		updateServersCmd(args.Update)
 	default:
 		printHelp()
 	}

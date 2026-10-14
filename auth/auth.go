@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/getlantern/fronted"
@@ -36,31 +38,93 @@ type Client interface {
 // const DefaultAPIURL = "https://api.iantem.io/v1"
 const DefaultAPIURL = "https://df.iantem.io/api/v1"
 
-func NewClient(baseURL string, insecure bool, writer io.Writer) Client {
-	var httpClient *http.Client
-	if insecure {
-		httpClient = &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true,
-				},
-			},
-			Timeout: 30 * time.Second,
-		}
-	} else {
-		frontedConfig := fronted.NewFronted(
-			fronted.WithConfigURL("https://media.githubusercontent.com/media/getlantern/fronted/refs/heads/main/fronted.yaml.gz"),
-		)
-		transport := kindling.NewKindling(
-			"lantern-headless-client",
-			kindling.WithLogWriter(writer),
-			kindling.WithDomainFronting(frontedConfig),
-			kindling.WithProxyless("df.iantem.io"),
-		)
-		httpClient = transport.NewHTTPClient()
+// clientOptions configures how the auth HTTP client reaches the network.
+type clientOptions struct {
+	frontedConfigPath string
+	upstreamProxy     string
+	skipProxyless     bool
+}
 
+// Option customizes the auth client.
+type Option func(*clientOptions)
+
+// WithFrontedConfig makes the auth client use a local fronted.yaml.gz instead
+// of downloading the fronting configuration.
+func WithFrontedConfig(path string) Option {
+	return func(c *clientOptions) { c.frontedConfigPath = path }
+}
+
+// WithUpstreamProxy makes the auth client reach the API through the given
+// HTTP/HTTPS/SOCKS5 proxy.
+func WithUpstreamProxy(proxy string) Option {
+	return func(c *clientOptions) { c.upstreamProxy = proxy }
+}
+
+// WithoutProxyless disables the DNS based smart dialer for the auth client.
+func WithoutProxyless() Option {
+	return func(c *clientOptions) { c.skipProxyless = true }
+}
+
+func NewClient(baseURL string, insecure bool, writer io.Writer, opts ...Option) Client {
+	co := &clientOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+	var httpClient *http.Client
+	if co.upstreamProxy != "" {
+		u, err := url.Parse(co.upstreamProxy)
+		if err != nil || u.Scheme == "" {
+			pterm.Error.Printfln("Invalid upstream proxy %q, ignoring: %v", co.upstreamProxy, err)
+		} else {
+			httpClient = &http.Client{
+				Transport: &http.Transport{Proxy: http.ProxyURL(u)},
+				Timeout:   30 * time.Second,
+			}
+		}
+	}
+	if httpClient == nil {
+		if insecure {
+			httpClient = &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{
+						InsecureSkipVerify: true,
+					},
+				},
+				Timeout: 30 * time.Second,
+			}
+		} else {
+			frontedOpts := []fronted.Option{
+				fronted.WithCacheFile(frontedCachePath()),
+			}
+			if co.frontedConfigPath != "" {
+				frontedOpts = append(frontedOpts, fronted.WithLocalConfig(co.frontedConfigPath))
+			} else {
+				frontedOpts = append(frontedOpts,
+					fronted.WithConfigURL("https://media.githubusercontent.com/media/getlantern/fronted/refs/heads/main/fronted.yaml.gz"))
+			}
+			frontedConfig := fronted.NewFronted(frontedOpts...)
+			kindlingOpts := []kindling.Option{
+				kindling.WithLogWriter(writer),
+				kindling.WithDomainFronting(frontedConfig),
+			}
+			if !co.skipProxyless {
+				kindlingOpts = append(kindlingOpts, kindling.WithProxyless("df.iantem.io"))
+			}
+			transport := kindling.NewKindling(
+				"lantern-headless-client",
+				kindlingOpts...,
+			)
+			httpClient = transport.NewHTTPClient()
+		}
 	}
 	return &authClient{httpClient, baseURL}
+}
+
+func frontedCachePath() string {
+	if dir, err := os.UserConfigDir(); err == nil {
+		return filepath.Join(dir, "lantern-headless-auth", "fronted_cache.json")
+	}
+	return filepath.Join(os.TempDir(), "lantern-headless-auth-fronted_cache.json")
 }
 
 func (c *authClient) GetPROTOC(ctx context.Context, path string, params map[string]string, target protoreflect.ProtoMessage) error {

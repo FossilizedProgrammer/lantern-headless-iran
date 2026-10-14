@@ -1,0 +1,611 @@
+package client
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"strconv"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/getlantern/detour"
+	"github.com/getlantern/golog"
+	"github.com/getlantern/mockconn"
+	"github.com/getlantern/shortcut"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/getlantern/flashlight/v7/common"
+	"github.com/getlantern/flashlight/v7/dialer"
+	"github.com/getlantern/flashlight/v7/domainrouting"
+	"github.com/getlantern/flashlight/v7/stats"
+)
+
+var logger = golog.LoggerFor("client-test")
+
+var tempConfigDir string
+
+func TestMain(m *testing.M) {
+	tempConfigDir, err := os.MkdirTemp("", "client_test")
+	if err != nil {
+		logger.Errorf("Unable to create temp config dir: %v", err)
+		os.Exit(1)
+	}
+	defer os.RemoveAll(tempConfigDir)
+	os.Exit(m.Run())
+}
+
+const (
+	testLang            = "en"
+	testAdSwapTargetURL = "http://localhost/purchase"
+)
+
+type mockStatsTracker struct{}
+
+func (m mockStatsTracker) Latest() stats.Stats                                      { return stats.Stats{} }
+func (m mockStatsTracker) AddListener(func(newStats stats.Stats)) (close func())    { return nil }
+func (m mockStatsTracker) SetActiveProxyLocation(city, country, countryCode string) {}
+func (m mockStatsTracker) IncHTTPSUpgrades()                                        {}
+func (m mockStatsTracker) IncAdsBlocked()                                           {}
+func (m mockStatsTracker) SetDisconnected(val bool)                                 {}
+func (m mockStatsTracker) SetHasSucceedingProxy(val bool)                           {}
+func (m mockStatsTracker) SetHitDataCap(val bool)                                   {}
+func (m mockStatsTracker) SetIsPro(val bool)                                        {}
+func (m mockStatsTracker) SetYinbiEnabled(val bool)                                 {}
+func (m mockStatsTracker) SetAlert(stats.AlertType, string, bool)                   {}
+func (m mockStatsTracker) ClearAlert(stats.AlertType)                               {}
+
+func init() {
+	domainrouting.Configure(nil, &domainrouting.ProxiedSitesConfig{})
+}
+
+func newTestUserConfig() *common.UserConfigData {
+	return common.NewUserConfigData(common.DefaultAppName, "device", 1234, "protoken", nil, "en-US")
+}
+
+func resetDialers(client *Client, dial func(network, addr string) (net.Conn, error)) {
+	rdyC := make(chan struct{}, 1)
+	d := dialer.NewProxylessDialer()
+	d = d.OnOptions(&dialer.Options{
+		Dialers: []dialer.ProxyDialer{&testDialer{
+			name: "test-dialer",
+			dial: dial,
+		}},
+		OnSuccess: func(dialer dialer.ProxyDialer) {
+			select {
+			case rdyC <- struct{}{}:
+			default:
+			}
+		},
+		ProxyAll: func() bool {
+			return false
+		},
+	})
+	client.dialer.set(d)
+	// Wait for the dialer to be ready
+	<-rdyC
+}
+
+func newClient() *Client {
+	TimeoutWaitingForDNSResolutionMap = 1 * time.Millisecond // For testing, don't wait for a code that won't be run anyways
+	return newClientWithLangAndAdSwapTargetURL(testLang, testAdSwapTargetURL)
+}
+
+func newClientWithLangAndAdSwapTargetURL(lang string, adSwapTargetURL string) *Client {
+	client, _ := NewClient(
+		tempConfigDir,
+		func() bool { return false },
+		func() bool { return false }, // proxy all
+		func() bool { return false }, // use shortcut
+		func(ctx context.Context, addr string) (shortcut.Method, net.IP) {
+			return shortcut.Proxy, nil
+		}, // shortcut method
+		func() bool { return true }, // use detour
+		func() bool { return true }, // allow HTTPS everywhere
+		newTestUserConfig(),
+		mockStatsTracker{},
+		func() bool { return true }, // allow private hosts
+		func() string { return lang },
+		func(host string) (string, error) { return host, nil },
+		func(category, action, label string) {},
+		func(error, bool) {},
+		func() {},
+	)
+	return client
+}
+
+func TestServeHTTPOk(t *testing.T) {
+	mockResponse := []byte("HTTP/1.1 404 Not Found\r\n\r\n")
+	client := newClient()
+	resetDialers(client, mockconn.SucceedingDialer(mockResponse).Dial)
+
+	req, _ := http.NewRequest("CONNECT", "https://b.com:443", nil)
+	resp, err := roundTrip(client, req)
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "timeout=58", resp.Header.Get("Keep-Alive"))
+	assert.Equal(t, "0", resp.Header.Get("Content-Length"))
+}
+
+func TestServeHTTPTimeout(t *testing.T) {
+	client := newClient()
+	client.requestTimeout = 500 * time.Millisecond
+
+	// Set the bandit to a new Dial() func that waits "client.requestTimeout" * 2
+	// before running
+	resetDialers(
+		client, // Client
+		func(network, addr string) (net.Conn, error) { // Dial() func
+			time.Sleep(client.requestTimeout * 2)
+			return mockconn.SucceedingDialer(nil).Dial(network, addr)
+		})
+
+	req, err := http.NewRequest("CONNECT", "https://a.com:443", nil)
+	require.NoError(t, err)
+	resp, err := roundTrip(client, req)
+	require.Contains(t, err.Error(), "deadline")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "CONNECT requests should always succeed")
+
+	req, err = http.NewRequest("GET", "http://b.com/action", nil)
+	require.NoError(t, err)
+	req.Header.Set("Accept", "text/html")
+	resp, err = roundTrip(client, req)
+
+	require.Contains(t, err.Error(), "deadline")
+	require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode, "It should respond 503 Service Unavailable with error page")
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "<title>Lantern: Error Accessing Page</title>", "should respond with error page")
+	// The error page when dialing an inaccessible page with Lantern actually
+	// contains the dial error. See `./status/generic_error.html`
+	require.Contains(t, string(body), "deadline")
+}
+
+func TestIsAddressProxyable(t *testing.T) {
+	client := newClient()
+	assert.NoError(t, client.isAddressProxyable("192.168.1.1:9999"),
+		"all addresses should be proxyable when allow private hosts")
+	assert.NoError(t, client.isAddressProxyable("localhost:80"),
+		"all addresses should be proxyable when allow private hosts")
+	client.allowPrivateHosts = func() bool {
+		return false
+	}
+	assert.Error(t, client.isAddressProxyable("192.168.1.1:9999"),
+		"private address should not be proxyable")
+	assert.Error(t, client.isAddressProxyable("192.168.1.1"),
+		"address without port should not be proxyable")
+	// Note that in reality, browser / OS may choose to never proxy localhost
+	// URLs.
+	assert.Error(t, client.isAddressProxyable("www.google.com"),
+		"address should not be proxyable if it's missing a port")
+	assert.Error(t, client.isAddressProxyable("localhost:80"),
+		"address should not be proxyable if it's a plain hostname")
+	assert.Error(t, client.isAddressProxyable("localhost"),
+		"address should not be proxyable if it's a plain hostname")
+	assert.Error(t, client.isAddressProxyable("plainhostname:80"),
+		"address should not be proxyable if it's a plain hostname")
+	assert.Error(t, client.isAddressProxyable("something.local:80"),
+		"address should not be proxyable if it ends in .local")
+	assert.Error(t, client.isAddressProxyable("something.onion:80"),
+		"address should not be proxyable if it ends in .onion")
+	assert.NoError(t, client.isAddressProxyable("anysite.com:80"),
+		"address should be proxyable if it's not an IP address, not a plain hostname and does not end in .local")
+}
+
+func TestDialShortcut(t *testing.T) {
+	site := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte("abc"))
+		}),
+	)
+	addr := site.Listener.Addr().String()
+	_, p, _ := net.SplitHostPort(addr)
+	port, _ := strconv.Atoi(p)
+	proxiedCONNECTPorts = append(proxiedCONNECTPorts, port)
+	client := newClient()
+	shortcutVisited := 0
+
+	client.shortcutMethod = func(ctx context.Context, addr string) (shortcut.Method, net.IP) {
+		shortcutVisited++
+		return shortcut.Direct, net.ParseIP(addr)
+	}
+
+	req, _ := http.NewRequest("GET", site.URL, nil)
+	res, _ := roundTrip(client, req)
+	assert.Zero(t, shortcutVisited, "should not check shortcut list when shortcut is disabled")
+
+	client.useShortcut = func() bool { return true }
+	// used as a sign that the request is sent to proxy
+	mockResponse := []byte("HTTP/1.1 404 Not Found\r\n\r\n")
+	// add some delay before sending back data, as response before the request
+	// was sent is apparently not expected by http client, which would cause
+	// http.Transport to print "Unsolicited response received on idle HTTP
+	// channel..." and return readLoopPeekFailLocked error.
+	delayed404 := mockconn.SlowResponder(mockconn.SucceedingDialer(mockResponse), 50*time.Millisecond)
+	resetDialers(client, delayed404.Dial)
+
+	req, _ = http.NewRequest("GET", site.URL, nil)
+	res, _ = roundTrip(client, req)
+	assert.Equal(t, 1, shortcutVisited, "should check shortcut list")
+	assert.Equal(t, 200, res.StatusCode, "should respond with 200 when a shortcutted site is reachable")
+	body, _ := io.ReadAll(res.Body)
+	assert.Equal(t, "abc", string(body), "should respond with correct content")
+
+	req, _ = http.NewRequest("GET", "http://unknown:80", nil)
+	res, _ = roundTrip(client, req)
+	assert.Equal(t, 2, shortcutVisited, "should check shortcut list")
+	assert.Equal(t, 404, res.StatusCode, "should dial proxy if the shortcutted site is unreachable")
+
+	req, _ = http.NewRequest("CONNECT", "http://unknown2:80", nil)
+	res, _ = roundTrip(client, req)
+	assert.Equal(t, 3, shortcutVisited, "should check shortcut list")
+	nestedResp, err := res.nested()
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Equal(t, 404, nestedResp.StatusCode, "should dial proxy if the shortcutted site is unreachable")
+
+	client.useShortcut = func() bool { return true }
+	client.shortcutMethod = func(context.Context, string) (shortcut.Method, net.IP) {
+		shortcutVisited++
+		return shortcut.Proxy, nil
+	}
+	req, _ = http.NewRequest("CONNECT", "http://unknown3:80", nil)
+	res, _ = roundTrip(client, req)
+	assert.Equal(t, 4, shortcutVisited, "should check shortcut list")
+	nestedResp, err = res.nested()
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Equal(t, 404, nestedResp.StatusCode, "should dial proxy if the site is not shortcutted")
+
+	detour.AddToWl("unknown4:80", true)
+	defer detour.RemoveFromWl("unknown4:80")
+	req, _ = http.NewRequest("GET", "http://unknown4:80", nil)
+	res, _ = roundTrip(client, req)
+	assert.Equal(t, 4, shortcutVisited, "should not check shortcut list if the site is whitelisted")
+	assert.Equal(t, 404, res.StatusCode, "should dial proxy if the site is whitelisted")
+
+	detour.AddToWl("unknown5:80", true)
+	defer detour.RemoveFromWl("unknown5:80")
+	req, _ = http.NewRequest("CONNECT", "http://unknown5:80", nil)
+	res, _ = roundTrip(client, req)
+	assert.Equal(t, 4, shortcutVisited, "should not check shortcut list if the site is whitelisted")
+	nestedResp, err = res.nested()
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Equal(t, 404, nestedResp.StatusCode, "should dial proxy if the site is whitelisted")
+}
+
+// See https://github.com/getlantern/lantern-internal/issues/4267
+func TestLeakingDomainsRequiringProxy(t *testing.T) {
+	domainrouting.Configure(nil, &domainrouting.ProxiedSitesConfig{
+		Cloud: []string{"proxy.me"},
+	})
+	defer domainrouting.Configure(nil, &domainrouting.ProxiedSitesConfig{})
+
+	site := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte("abc"))
+		}),
+	)
+	addr := site.Listener.Addr().String()
+	_, p, _ := net.SplitHostPort(addr)
+	port, _ := strconv.Atoi(p)
+	proxiedCONNECTPorts = append(proxiedCONNECTPorts, port)
+	client := newClient()
+
+	client.shortcutMethod = func(ctx context.Context, addr string) (shortcut.Method, net.IP) {
+		return shortcut.Proxy, nil
+	}
+	client.useShortcut = func() bool { return false }
+
+	detour.AddToWl(addr, true)
+	defer detour.RemoveFromWl(site.URL)
+
+	// used as a sign that the request is sent to proxy
+
+	mockResponse := []byte("HTTP/1.1 418 I'm a Teapot\r\n\r\n")
+	// add some delay before sending back data, as response before the request
+	// was sent is apparently not expected by http client, which would cause
+	// http.Transport to print "Unsolicited response received on idle HTTP
+	// channel..." and return readLoopPeekFailLocked error.
+	delayed418 := mockconn.SlowResponder(mockconn.SucceedingDialer(mockResponse), 50*time.Millisecond)
+	resetDialers(client, delayed418.Dial)
+
+	req, _ := http.NewRequest("GET", "http://getiantem.org", nil)
+	res, _ := roundTrip(client, req)
+	assert.Equal(t, 418, res.StatusCode, "should dial proxy for domain requiring proxying")
+
+	req, _ = http.NewRequest("GET", "http://proxy.me", nil)
+	res, _ = roundTrip(client, req)
+	assert.Equal(t, 418, res.StatusCode, "should dial proxy for domain with proxy domainrouting rule")
+
+	req, _ = http.NewRequest("GET", site.URL, nil)
+	res, _ = roundTrip(client, req)
+	assert.Equal(t, 418, res.StatusCode, "should dial via proxy for random site if client is connected")
+
+	// setting disconnected status
+	client.disconnected = func() bool { return true }
+
+	req, _ = http.NewRequest("GET", site.URL, nil)
+	res, _ = roundTrip(client, req)
+	body, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	assert.Equal(t, 200, res.StatusCode, "should dial directly for random site if client is disconnected")
+	assert.Equal(t, "abc", string(body), "should dial directly for random site if client is disconnected")
+
+	req, _ = http.NewRequest("GET", "http://getiantem.org", nil)
+	res, _ = roundTrip(client, req)
+	assert.Equal(t, 418, res.StatusCode, "should dial proxy for domain requiring proxying even if client is disconnected")
+
+	req, _ = http.NewRequest("GET", "http://subdomain.getiantem.org", nil)
+	res, _ = roundTrip(client, req)
+	assert.Equal(t, 418, res.StatusCode, "should dial proxy for subdomain requiring proxying even if client is disconnected")
+
+	domainrouting.Configure(nil, &domainrouting.ProxiedSitesConfig{
+		Cloud: []string{"localhost"},
+	})
+
+	req, _ = http.NewRequest("GET", site.URL, nil)
+	res, _ = roundTrip(client, req)
+	body, err = io.ReadAll(res.Body)
+	require.NoError(t, err)
+	assert.Equal(t, 200, res.StatusCode, "should dial directly for domain with proxy domainrouting rule when client is disconnected")
+	assert.Equal(t, "abc", string(body), "should dial directly for domain with proxy domainrouting rule when client is disconnected")
+
+}
+
+// See https://github.com/getlantern/lantern-internal/issues/2724
+func TestTimeoutCheckingShortcut(t *testing.T) {
+	requestTimeout := 10 * time.Millisecond
+	client := newClient()
+	client.requestTimeout = requestTimeout
+	client.useDetour = func() bool { return false }
+	client.useShortcut = func() bool { return true }
+
+	client.shortcutMethod = func(ctx context.Context, addr string) (shortcut.Method, net.IP) {
+		// force shortcutMethod to wait for cxt to expire
+		<-ctx.Done()
+		return shortcut.Unknown, nil
+	}
+
+	mockResponse := []byte("HTTP/1.1 500 no response\r\n\r\n")
+	dialer := mockconn.SucceedingDialer(mockResponse)
+	resetDialers(client, dialer.Dial)
+	req, _ := http.NewRequest("GET", "http://unknown:80", nil)
+	res, _ := roundTrip(client, req)
+	assert.Equal(t, 503, res.StatusCode, "should fail if checking shortcut list times out")
+	assert.True(t, dialer.AllClosed(), "should not dial proxy if checking shourcut list times out")
+}
+
+func TestAccessingProxyPort(t *testing.T) {
+	mockResponse := []byte("HTTP/1.1 404 Not Found\r\n\r\n")
+	client := newClient()
+	resetDialers(client, mockconn.SucceedingDialer(mockResponse).Dial)
+
+	go func() {
+		client.ListenAndServeHTTP("localhost:", func() {
+		})
+	}()
+	listenAddr, valid := Addr(24 * time.Hour)
+	assert.True(t, valid, "should set addr")
+	proxyURL := "http://" + listenAddr.(string)
+	tr := http.Transport{
+		Proxy: func(*http.Request) (*url.URL, error) {
+			return url.Parse(proxyURL)
+		},
+	}
+
+	req, _ := http.NewRequest("GET", proxyURL, nil)
+	resp, err := tr.RoundTrip(req)
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	assert.Equal(t, "0", resp.Header.Get("Content-Length"))
+
+	_, port, _ := net.SplitHostPort(listenAddr.(string))
+	req, _ = http.NewRequest("GET", "http://localhost:"+port, nil)
+	resp, err = tr.RoundTrip(req)
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	assert.Equal(t, "0", resp.Header.Get("Content-Length"))
+}
+
+// Assert that a testDialer is a bandit.Dialer
+var _ dialer.ProxyDialer = &testDialer{}
+
+type testDialer struct {
+	name      string
+	rtt       time.Duration
+	dial      func(network, addr string) (net.Conn, error)
+	bandwidth float64
+	untrusted bool
+	failing   bool
+	attempts  int64
+	successes int64
+	failures  int64
+	stopped   bool
+}
+
+func (d *testDialer) DialProxy(ctx context.Context) (net.Conn, error) {
+	return &net.TCPConn{}, nil
+}
+
+func (d *testDialer) Ready() <-chan error {
+	return nil
+}
+
+// Name returns the name for this Dialer
+func (d *testDialer) Name() string {
+	return d.name
+}
+
+func (d *testDialer) Label() string {
+	return d.name
+}
+
+func (d *testDialer) JustifiedLabel() string {
+	return d.name
+}
+
+func (d *testDialer) Location() (string, string, string) {
+	return "", "", ""
+}
+
+func (d *testDialer) Protocol() string {
+	return "https"
+}
+
+func (d *testDialer) Addr() string {
+	return ""
+}
+
+func (d *testDialer) Trusted() bool {
+	return !d.untrusted
+}
+
+func (d *testDialer) NumPreconnecting() int {
+	return 0
+}
+
+func (d *testDialer) NumPreconnected() int {
+	return 0
+}
+
+func (d *testDialer) SupportsAddr(network, addr string) bool {
+	return true
+}
+
+func (d *testDialer) Dial(network, addr string) (net.Conn, error) {
+	conn, _, err := d.DialContext(context.Background(), network, addr)
+	return conn, err
+}
+
+func (d *testDialer) DialContext(ctx context.Context, network, addr string) (net.Conn, bool, error) {
+	var conn net.Conn
+	var err error
+	if !d.Succeeding() {
+		err = fmt.Errorf("Failing intentionally")
+	} else if network != "" {
+		chDone := make(chan bool)
+		go func() {
+			conn, err = d.dial(network, addr)
+			chDone <- true
+		}()
+		select {
+		case <-chDone:
+			return conn, true, err
+		case <-ctx.Done():
+			return nil, false, ctx.Err()
+		}
+	}
+	atomic.AddInt64(&d.attempts, 1)
+	if err == nil {
+		atomic.AddInt64(&d.successes, 1)
+	} else {
+		atomic.AddInt64(&d.failures, 1)
+	}
+	return conn, false, err
+}
+
+func (d *testDialer) MarkFailure() {
+	atomic.AddInt64(&d.failures, 1)
+}
+
+func (d *testDialer) EstRTT() time.Duration {
+	return d.rtt
+}
+
+func (d *testDialer) EstBandwidth() float64 {
+	return d.bandwidth
+}
+
+func (d *testDialer) EstSuccessRate() float64 {
+	return 0
+}
+
+func (d *testDialer) Attempts() int64 {
+	return atomic.LoadInt64(&d.attempts)
+}
+
+func (d *testDialer) Successes() int64 {
+	return atomic.LoadInt64(&d.successes)
+}
+
+func (d *testDialer) ConsecSuccesses() int64 {
+	return 0
+}
+
+func (d *testDialer) Failures() int64 {
+	return atomic.LoadInt64(&d.failures)
+}
+
+func (d *testDialer) ConsecFailures() int64 {
+	return 0
+}
+
+func (d *testDialer) Succeeding() bool {
+	return !d.failing
+}
+
+func (d *testDialer) DataRecv() uint64 {
+	return 0
+}
+
+func (d *testDialer) DataSent() uint64 {
+	return 0
+}
+
+func (d *testDialer) CheckConnectivity() bool {
+	return true
+}
+
+func (d *testDialer) Stop() {
+	d.stopped = true
+}
+
+func (d *testDialer) WriteStats(io.Writer) {}
+
+func roundTrip(client *Client, req *http.Request) (*response, error) {
+	toSend := &bytes.Buffer{}
+	err := req.Write(toSend)
+	if err != nil {
+		return nil, err
+	}
+	received := &bytes.Buffer{}
+	err = client.handle(mockconn.New(received, toSend))
+	if err != nil {
+		logger.Errorf("Error handling: %v", err)
+	}
+	br := bufio.NewReader(bytes.NewReader(received.Bytes()))
+	resp, err2 := http.ReadResponse(br, req)
+	if err == nil {
+		err = err2
+	}
+	return &response{*resp, req, br}, err
+}
+
+type response struct {
+	http.Response
+	req *http.Request
+	br  *bufio.Reader
+}
+
+func (r *response) nested() (*http.Response, error) {
+	return http.ReadResponse(r.br, r.req)
+}

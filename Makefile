@@ -15,7 +15,7 @@ GID := $(shell id -g)
 LATEST_TAG = $(shell git describe --tags $(shell git rev-list --tags --max-count=1))
 VERSION ?= $(subst v,,$(LATEST_TAG))
 
-LDFLAGS := -s -w -X github.com/getlantern/lantern-headless-client/shared.RevisionDate=$(REVISION_DATE) -X github.com/getlantern/lantern-headless-client/shared.BuildDate=$(BUILD_DATE) -X github.com/getlantern/lantern-headless-client/shared.ApplicationVersion=$(VERSION)
+LDFLAGS := -s -w -X github.com/oldblocker/lantern-headless-iran/shared.RevisionDate=$(REVISION_DATE) -X github.com/oldblocker/lantern-headless-iran/shared.BuildDate=$(BUILD_DATE) -X github.com/oldblocker/lantern-headless-iran/shared.ApplicationVersion=$(VERSION)
 
 # Check if required environment variables are set
 check-env:

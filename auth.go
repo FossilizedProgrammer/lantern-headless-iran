@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/BurntSushi/toml"
-	"github.com/getlantern/lantern-headless-client/auth"
+	"github.com/oldblocker/lantern-headless-iran/auth"
 	"github.com/pterm/pterm"
 )
 
@@ -107,12 +107,26 @@ func logout() {
 	_ = persistAuth()
 }
 
+func authClientOptions() []auth.Option {
+	var o []auth.Option
+	if p := resolvedFrontedConfigPath(); p != "" {
+		o = append(o, auth.WithFrontedConfig(p))
+	}
+	if args.UpstreamProxy != "" {
+		o = append(o, auth.WithUpstreamProxy(args.UpstreamProxy))
+	}
+	if !args.WithProxyless {
+		o = append(o, auth.WithoutProxyless())
+	}
+	return o
+}
+
 func authCmd(ctx context.Context, cmd *AuthCmd, overrideAuthURL string, logWriter io.Writer) {
 	authUrl := auth.DefaultAPIURL
 	if overrideAuthURL != "" {
 		authUrl = overrideAuthURL
 	}
-	client := auth.NewClient(authUrl, args.Insecure, logWriter)
+	client := auth.NewClient(authUrl, args.Insecure, logWriter, authClientOptions()...)
 	var err error
 	switch {
 	case cmd.Login != nil:
