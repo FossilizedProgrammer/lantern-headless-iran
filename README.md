@@ -8,6 +8,17 @@ A Lantern client **without a graphical interface** (headless), made for networks
 filtering (tested in Iran). It opens two local ports, and your browser is pointed at them —
 your traffic then leaves through the Lantern network.
 
+## When this helps — and when it doesn't
+
+- **In regions with heavy filtering where Lantern's own servers are IP-blocked, this program
+  does NOT bypass the filter on its own.** Without a working `--upstream-proxy` its connections
+  simply fail — it is not a one-click filter bypass.
+- **What it is good for in those conditions: getting a proper IP through your upstream.** Only
+  the short connection to Lantern's (blocked) servers travels over your healthy proxy; your
+  traffic then keeps running through Lantern's own protocol and leaves with a suitable exit IP.
+- So the recipe for such networks is: bring a proxy that already works (Tor, Psiphon, a relay, …)
+  and use this client to obtain a good IP via that upstream.
+
 ## Download
 
 Binaries are compiled **automatically by GitHub Actions** and published on the
