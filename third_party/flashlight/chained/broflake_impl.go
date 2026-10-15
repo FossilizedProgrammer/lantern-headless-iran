@@ -143,7 +143,7 @@ func makeBroflakeOptions(pc *config.ProxyConfig) (
 	}
 
 	// Broflake's HTTP client isn't currently configurable via PluggableTransportSettings, and so
-	// we just give it this domain fronted client in all cases
+	// we just give it the shared control-plane client in all cases
 	wo.HttpClient = common.GetHTTPClient()
 
 	// Override QUICLayerOptions defaults as applicable

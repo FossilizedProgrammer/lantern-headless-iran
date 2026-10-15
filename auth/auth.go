@@ -8,13 +8,10 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"time"
 
-	"github.com/getlantern/fronted"
-	"github.com/getlantern/kindling"
 	"github.com/pterm/pterm"
+	"google.golang.org/protobuf/encoding/protowire"
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -40,91 +37,84 @@ const DefaultAPIURL = "https://df.iantem.io/api/v1"
 
 // clientOptions configures how the auth HTTP client reaches the network.
 type clientOptions struct {
-	frontedConfigPath string
-	upstreamProxy     string
-	skipProxyless     bool
+	upstreamProxy string
 }
 
 // Option customizes the auth client.
 type Option func(*clientOptions)
 
-// WithFrontedConfig makes the auth client use a local fronted.yaml.gz instead
-// of downloading the fronting configuration.
-func WithFrontedConfig(path string) Option {
-	return func(c *clientOptions) { c.frontedConfigPath = path }
-}
-
 // WithUpstreamProxy makes the auth client reach the API through the given
-// HTTP/HTTPS/SOCKS5 proxy.
+// HTTP/HTTPS/SOCKS5 proxy. Without it the client connects directly.
 func WithUpstreamProxy(proxy string) Option {
 	return func(c *clientOptions) { c.upstreamProxy = proxy }
 }
 
-// WithoutProxyless disables the DNS based smart dialer for the auth client.
-func WithoutProxyless() Option {
-	return func(c *clientOptions) { c.skipProxyless = true }
-}
-
-func NewClient(baseURL string, insecure bool, writer io.Writer, opts ...Option) Client {
+func NewClient(baseURL string, insecure bool, opts ...Option) Client {
 	co := &clientOptions{}
 	for _, o := range opts {
 		o(co)
 	}
-	var httpClient *http.Client
+	transport := &http.Transport{}
 	if co.upstreamProxy != "" {
 		u, err := url.Parse(co.upstreamProxy)
 		if err != nil || u.Scheme == "" {
 			pterm.Error.Printfln("Invalid upstream proxy %q, ignoring: %v", co.upstreamProxy, err)
 		} else {
-			httpClient = &http.Client{
-				Transport: &http.Transport{Proxy: http.ProxyURL(u)},
-				Timeout:   30 * time.Second,
-			}
+			transport.Proxy = http.ProxyURL(u)
 		}
 	}
-	if httpClient == nil {
-		if insecure {
-			httpClient = &http.Client{
-				Transport: &http.Transport{
-					TLSClientConfig: &tls.Config{
-						InsecureSkipVerify: true,
-					},
-				},
-				Timeout: 30 * time.Second,
-			}
-		} else {
-			frontedOpts := []fronted.Option{
-				fronted.WithCacheFile(frontedCachePath()),
-			}
-			if co.frontedConfigPath != "" {
-				frontedOpts = append(frontedOpts, fronted.WithLocalConfig(co.frontedConfigPath))
-			} else {
-				frontedOpts = append(frontedOpts,
-					fronted.WithConfigURL("https://media.githubusercontent.com/media/getlantern/fronted/refs/heads/main/fronted.yaml.gz"))
-			}
-			frontedConfig := fronted.NewFronted(frontedOpts...)
-			kindlingOpts := []kindling.Option{
-				kindling.WithLogWriter(writer),
-				kindling.WithDomainFronting(frontedConfig),
-			}
-			if !co.skipProxyless {
-				kindlingOpts = append(kindlingOpts, kindling.WithProxyless("df.iantem.io"))
-			}
-			transport := kindling.NewKindling(
-				"lantern-headless-client",
-				kindlingOpts...,
-			)
-			httpClient = transport.NewHTTPClient()
+	if insecure {
+		transport.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
 		}
+	}
+	httpClient := &http.Client{
+		Transport: transport,
+		Timeout:   30 * time.Second,
 	}
 	return &authClient{httpClient, baseURL}
 }
 
-func frontedCachePath() string {
-	if dir, err := os.UserConfigDir(); err == nil {
-		return filepath.Join(dir, "lantern-headless-auth", "fronted_cache.json")
+// parseErrorBody extracts (code, message) from the protobuf error body the
+// API returns on non-200 responses: field 1 varint = code, field 2 string =
+// message.
+func parseErrorBody(b []byte) (int32, string) {
+	var code int32
+	var msg string
+	for len(b) > 0 {
+		num, typ, n := protowire.ConsumeTag(b)
+		if n < 0 {
+			return code, msg
+		}
+		b = b[n:]
+		switch typ {
+		case protowire.VarintType:
+			v, n := protowire.ConsumeVarint(b)
+			if n < 0 {
+				return code, msg
+			}
+			if num == 1 {
+				code = int32(v)
+			}
+			b = b[n:]
+		case protowire.BytesType:
+			v, n := protowire.ConsumeBytes(b)
+			if n < 0 {
+				return code, msg
+			}
+			if num == 2 {
+				msg = string(v)
+			}
+			b = b[n:]
+		default:
+			n := protowire.ConsumeFieldValue(num, typ, b)
+			if n < 0 {
+				return code, msg
+			}
+			b = b[n:]
+		}
 	}
-	return filepath.Join(os.TempDir(), "lantern-headless-auth-fronted_cache.json")
+	return code, msg
 }
 
 func (c *authClient) GetPROTOC(ctx context.Context, path string, params map[string]string, target protoreflect.ProtoMessage) error {
@@ -147,12 +137,12 @@ func (c *authClient) GetPROTOC(ctx context.Context, path string, params map[stri
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code %d", resp.StatusCode)
-	}
 	bo, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("failed to read response body: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return apiError(resp.StatusCode, bo)
 	}
 
 	return proto.Unmarshal(bo, target)
@@ -173,15 +163,24 @@ func (c *authClient) PostPROTOC(ctx context.Context, path string, body protorefl
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code %d", resp.StatusCode)
-	}
 	bo, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("failed to read response body: %w", err)
 	}
+	if resp.StatusCode != http.StatusOK {
+		return apiError(resp.StatusCode, bo)
+	}
 
 	return proto.Unmarshal(bo, target)
+}
+
+// apiError builds a readable error from a non-200 response, surfacing the
+// server's protobuf error message (e.g. "user already exists") when present.
+func apiError(status int, body []byte) error {
+	if _, msg := parseErrorBody(body); msg != "" {
+		return fmt.Errorf("unexpected status code %d: %s", status, msg)
+	}
+	return fmt.Errorf("unexpected status code %d", status)
 }
 
 func (c *authClient) GetSalt(ctx context.Context, email string) (*GetSaltResponse, error) {

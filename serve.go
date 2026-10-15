@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -85,7 +86,7 @@ func serve(cmd *ServeCmd) {
 	}
 
 	fc.Run(cmd.HTTPProxyAddress, cmd.SOCKSProxyAddress, func(cl *client.Client) {
-		spin, _ := spinner.Start("Waiting for proxy to be ready")
+		spin, _ := spinner.Start("Waiting for the config service…")
 		defer spin.Stop()
 		sa, ok := cl.Socks5Addr(5 * time.Second)
 		if !ok {
@@ -99,7 +100,14 @@ func serve(cmd *ServeCmd) {
 		}
 		select {
 		case <-proxyReady:
-			break
+		case <-time.After(15 * time.Second):
+			pterm.Error.Println("The config service is unreachable — Lantern cannot fetch its server list.")
+			if args.UpstreamProxy == "" {
+				pterm.Info.Println("Hint: the config service appears to be blocked on this network. Re-run with --upstream-proxy socks5://127.0.0.1:<port> so the config fetch goes through a working proxy.")
+			} else {
+				pterm.Info.Printfln("Hint: --upstream-proxy %s is configured but the config service is still unreachable; check that the proxy is alive.", args.UpstreamProxy)
+			}
+			os.Exit(2)
 		}
 		pterm.Info.Printfln("Local proxy is listening — SOCKS5: %v  HTTP: %v", sa, ha)
 		pterm.Info.Printfln("Verifying the data path with a real request through that proxy...")

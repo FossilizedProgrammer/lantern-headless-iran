@@ -236,7 +236,6 @@ adsettings:
       ae: none
 client:
   firetweetversion: "{{.ftVersion}}"
-  frontedservers: []
   chainedservers: {{range .fallbacks}}
     fallback-{{.ip}}:
       addr: {{.ip}}
@@ -246,26 +245,6 @@ client:
       weight: 1000000
       qos: 10
       trusted: true{{end}}
-  fronted:
-    providers: {{range $pid, $p := .providers}}
-      {{$pid}}:
-        hostaliases: {{range $k, $v := $p.HostAliases}}
-          {{$k}}: {{$v}}{{end}}
-        testurl: {{$p.TestURL}}{{if $p.Validator}}
-        validator:{{if $p.Validator.RejectStatus}}
-          rejectstatus: [{{range $i, $e := $p.Validator.RejectStatus}}{{if $i}}, {{end}}{{$e}}{{end}}]{{end}}{{end}}
-        frontingsnis: {{range $key, $cfg := $p.FrontingSNIs}}
-          {{$key}}:
-            usearbitrarysnis: {{$cfg.UseArbitrarySNIs}}{{ if $cfg.ArbitrarySNIs }}
-            arbitrarysnis:  [{{range $i, $sni := $cfg.ArbitrarySNIs}}{{if $i}}, {{end}}{{$sni}}{{end}}]{{end}}{{end}}
-        masquerades: {{if eq $pid "cloudfront"}}&cfmasq{{end}}{{range $p.Masquerades}}
-        - domain: {{.Domain}}
-          ipaddress: {{.IpAddress}}{{end}}{{else}}{}{{end}}
-  masqueradesets:
-    cloudflare: []
-    {{if .providers.cloudfront}}cloudfront: *cfmasq{{else}}cloudfront: {{range .cloudfrontMasquerades}}
-    - domain: {{.Domain}}
-      ipaddress: {{.IpAddress}}{{else}}[]{{end}}{{end}}
   dnsresolutionmapfordirectdials:
     # This is a map of domain names to IP addresses.
     # ss7hc6jm.io refers to a replica-rust instance running in RU
@@ -374,8 +353,6 @@ domainroutingrules:
   tracker.openbittorrent.com: p
   tracker4.itzmx.com: p
 
-  # Avoid using Replica domains when domain fronting is not configured in code
-  #service.dogsdogs.xyz: p
 
   # Donorbox doesn't like proxied traffic sometimes, send it direct
   donorbox.org: md
@@ -397,9 +374,6 @@ proxiedsites:
     deletions: []
   cloud:{{range $domain := .proxiedsites }}
   - {{$domain}}{{end}}
-trustedcas: {{range .cas}}
-- commonname: "{{.CommonName}}"
-  cert: "{{.Cert}}"{{end}}
 
 # This is the original global config, still here for compatibility with very old clients.
 replica:
@@ -426,14 +400,4 @@ otel:
     autoupdate_download: 1
     autoupdate_install: 1
     check_update: 1
-    broflake_fronted_roundtrip: 800000
     new_broflake: 1000
-
-{{with .dnstt}}
-dnsttconfig:
-  domain: "{{.Domain}}"
-  publicKey: "{{.PublicKey}}"
-  dohResolver: "{{.DoHResolver}}"
-  dotResolver: "{{.DoTResolver}}"
-  utlsDistribution: "{{.UTLSDistribution}}"
-{{end}}

@@ -58,7 +58,7 @@ HTTP proxy to `127.0.0.1:18070`.
 ## What the startup messages mean
 
 ```
-SUCCESS  Control plane reachable (config fetched over domain fronting)
+SUCCESS  Control plane reachable (config fetched successfully)
 INFO     Local proxy is listening — SOCKS5: 127.0.0.1:18071  HTTP: 127.0.0.1:18070
 INFO     Verifying the data path with a real request through that proxy...
 SUCCESS  Data path OK — HTTP 204 from https://www.google.com/generate_204 in 803ms
@@ -134,7 +134,7 @@ The fetched list is saved to `<data-path>/user.conf`, so a following `start` (or
 |---|---|
 | `--upstream-proxy` | `socks5://` / `http://` / `https://` proxy used for config fetch, for reaching Lantern's (possibly IP-blocked) servers, and as the last-resort data path |
 | `--data-path` | Where config, logs and data live |
-| `--with-proxyless` / `--enable-dnstt` | Enable smart dialing / the DNS tunnel (off by default) |
+| `--with-proxyless` | Enable smart dialing for control-plane requests (off by default) |
 | `--server <name>` | Pin `start` to a single server by name (see the `servers` command) |
 | `update [--via upstream\|direct\|auto] [--json] [--check]` | Refresh the cached server list over the chosen transport; `--check` probes which servers are reachable |
 | `servers [--refresh] [--json] [--check]` | List Lantern servers and their country/city; `--check` adds per-server reachability |

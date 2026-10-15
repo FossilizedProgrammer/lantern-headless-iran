@@ -87,8 +87,8 @@ func serversCmd(cmd *ServersCmd) {
 }
 
 // fetchServers runs the Lantern client just long enough to fetch a fresh
-// server list through the control plane (domain fronting, upstream proxy,
-// etc. — same as `start`). It reports the first fetched list, falling back to
+// server list through the control plane (upstream proxy or direct — same as
+// `start`). It reports the first fetched list, falling back to
 // the cached one (stale = true) when the fetch does not complete in time.
 func fetchServers(timeout time.Duration) (proxies map[string]*commonconfig.ProxyConfig, stale bool, err error) {
 	type proxyUpdate struct {
@@ -126,7 +126,7 @@ func fetchServers(timeout time.Duration) (proxies map[string]*commonconfig.Proxy
 			if len(cached) > 0 {
 				return cached, true, nil
 			}
-			return nil, false, errors.New("timed out waiting for the config service; try again or check --upstream-proxy / fronting setup")
+			return nil, false, errors.New("timed out waiting for the config service; try again or check --upstream-proxy setup")
 		}
 	}
 }

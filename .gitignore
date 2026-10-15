@@ -15,8 +15,6 @@ lantern-data
 /data/
 user.conf
 proxystats.csv
-fronted_cache.json
-fronted-local.yaml.gz
 tls_session_states
 bandit
 *.log

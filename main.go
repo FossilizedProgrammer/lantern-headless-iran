@@ -68,7 +68,7 @@ func main() {
 	applyClientOptions()
 	switch {
 	case args.Auth != nil:
-		authCmd(ctx, args.Auth, args.AuthURL, logWriter)
+		authCmd(ctx, args.Auth, args.AuthURL)
 	case args.Serve != nil:
 		readAuth()
 		serve(args.Serve)

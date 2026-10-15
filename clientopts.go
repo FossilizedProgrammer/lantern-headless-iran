@@ -9,10 +9,7 @@ import (
 func applyClientOptions() {
 	opts := &common.ClientOptions{
 		SkipProxyless: !args.WithProxyless,
-		SkipDNSTT:     !args.EnableDNSTT,
 		UpstreamProxy: args.UpstreamProxy,
-		DoHResolver:   args.DoHResolver,
-		DoTResolver:   args.DoTResolver,
 	}
 	common.SetClientOptions(opts)
 }

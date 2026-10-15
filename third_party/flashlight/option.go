@@ -46,8 +46,8 @@ func WithOnProxies(onProxiesUpdate func([]dialer.ProxyDialer, config.Source)) Op
 }
 
 // WithProxyFilter sets a filter that is applied to the map of chained proxies
-// before it is dispatched to any proxy listener (the client's dialers, the
-// bypass service, ...). It can be used to pin the client to a single server.
+// before it is dispatched to any proxy listener (the client's dialers, ...). It
+// can be used to pin the client to a single server.
 // The filter must not modify the given map; it returns the map to use instead
 // (a nil or empty result means "no proxies", i.e. the client will have no
 // chained servers).

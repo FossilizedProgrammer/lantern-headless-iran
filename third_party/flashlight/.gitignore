@@ -10,8 +10,6 @@ autoupdate-prod.go
 *.pyc
 certs/errors.txt
 flashlight.yaml
-genconfig/genconfig
-genconfig/cloud.yaml
 lantern
 lantern-headless*
 lantern-staging*
@@ -27,7 +25,6 @@ config/fetched-proxies.yaml.gz
 config/fetched-proxies.yaml.stored
 config*/global.yaml
 config/proxies.yaml
-config/generated/masquerades.go
 profile.cov
 profile_tmp.cov
 lantern-linux

@@ -104,7 +104,7 @@ func TestBadServer(t *testing.T) {
 		conn, err := l.Accept()
 		if err == nil {
 			if err := conn.Close(); err != nil {
-				t.Fatalf("Unable to close connection: %v", err)
+				t.Errorf("Unable to close connection: %v", err)
 			}
 		}
 	}()
@@ -133,7 +133,7 @@ func TestBadConnectStatus(t *testing.T) {
 	}
 	go func() {
 		if err := hs.Serve(l); err != nil {
-			t.Fatalf("Unable to serve: %v", err)
+			t.Errorf("Unable to serve: %v", err)
 		}
 	}()
 
@@ -219,7 +219,7 @@ func startServer(t *testing.T) net.Listener {
 	go func() {
 		err := s.Serve(l)
 		if err != nil {
-			t.Fatalf("Unable to serve: %s", err)
+			t.Errorf("Unable to serve: %s", err)
 		}
 	}()
 
@@ -238,7 +238,7 @@ func test(t *testing.T, dialer func(network, addr string) (net.Conn, error)) {
 	go func() {
 		conn, err := sl.Accept()
 		if err != nil {
-			t.Fatalf("Unable to accept connection: %s", err)
+			t.Errorf("Unable to accept connection: %s", err)
 			return
 		}
 		defer func() {
@@ -249,12 +249,12 @@ func test(t *testing.T, dialer func(network, addr string) (net.Conn, error)) {
 		b := make([]byte, 4)
 		_, err = io.ReadFull(conn, b)
 		if err != nil {
-			t.Fatalf("Unable to read from client: %s", err)
+			t.Errorf("Unable to read from client: %s", err)
 		}
 		assert.Equal(t, pingBytes, b, "Didn't receive correct ping message")
 		_, err = conn.Write(pongBytes)
 		if err != nil {
-			t.Fatalf("Unable to write to client: %s", err)
+			t.Errorf("Unable to write to client: %s", err)
 		}
 	}()
 

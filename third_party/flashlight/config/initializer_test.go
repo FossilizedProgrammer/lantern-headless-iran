@@ -24,7 +24,7 @@ func TestInit(t *testing.T) {
 	// embedded ones, and remote ones.
 	globalDispatch := func(cfg interface{}, src Source) {
 		global := cfg.(*Global)
-		assert.True(t, len(global.Client.MasqueradeSets) > 1)
+		assert.NotNil(t, global.Client)
 		gotGlobal.Set(true)
 	}
 	stop := Init(

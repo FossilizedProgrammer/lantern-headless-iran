@@ -91,7 +91,7 @@ func TestObfuscated(t *testing.T) {
 		cfg := conf.(*Global)
 
 		// Just make sure it's legitimately reading the config.
-		assert.True(t, len(cfg.Client.MasqueradeSets) > 1)
+		assert.NotNil(t, cfg.Client)
 	})
 }
 

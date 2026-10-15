@@ -50,8 +50,9 @@ func TestReadResponses(t *testing.T) {
 
 func TestSubmitIssue(t *testing.T) {
 	// Change the below to true if you want the test to submit a test email. To
-	// test that domain-fronting is working, you can block mandrillapp.com, for
-	// example by setting its address to 0.0.0.0 in /etc/hosts.
+	// test the HTTP path used to reach the mail API, you can block
+	// mandrillapp.com, for example by setting its address to 0.0.0.0 in
+	// /etc/hosts.
 	if false {
 
 		msg := &Message{

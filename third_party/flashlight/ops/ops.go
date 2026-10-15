@@ -28,8 +28,6 @@ const (
 	ProxyNone ProxyType = "none"
 	// ProxyChained means access through Lantern hosted chained server
 	ProxyChained ProxyType = "chained"
-	// ProxyFronted means access through domain fronting
-	ProxyFronted ProxyType = "fronted"
 
 	// NB - a beam is like a tracing ID and has nothing to do with the application named "beam"
 	CtxKeyBeam = contextKey("beam")

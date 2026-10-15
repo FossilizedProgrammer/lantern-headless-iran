@@ -122,7 +122,6 @@ func parseGlobal(bytes []byte) {
 	cfg.ProxiedSites = nil
 	cfg.DomainRoutingRules = nil
 	cfg.NamedDomainRoutingRules = nil
-	cfg.Client.Fronted.Providers = nil
 
 	out, err := yaml.Marshal(cfg)
 	if err != nil {

@@ -335,7 +335,7 @@ func (f *Flashlight) Run(httpProxyAddr, socksProxyAddr string,
 	f.RunClientListeners(httpProxyAddr, socksProxyAddr, afterStart, onError)
 }
 
-// StartBackgroundServices starts the goroutine monitoring, bypass, and config fetching background
+// StartBackgroundServices starts the goroutine monitoring and config fetching background
 // services and returns a function that can be called to stop them.
 func (f *Flashlight) StartBackgroundServices() (func(), error) {
 	log.Debug("Starting background services")
@@ -344,14 +344,11 @@ func (f *Flashlight) StartBackgroundServices() (func(), error) {
 	stopMonitor := goroutines.Monitor(time.Minute, 800, 5)
 	stopGlobalConfigFetch := f.startGlobalConfigFetch()
 
-	stopBypass := services.StartBypassService(f.addProxyListener, f.configDir, f.userConfig)
-
 	// we don't need to start the config service if sticky is set
 	if sticky, _ := f.flagsAsMap["stickyconfig"].(bool); sticky {
 		log.Debug("Sticky config set, not starting config service")
 		return func() {
 			stopMonitor()
-			stopBypass()
 			stopGlobalConfigFetch()
 		}, nil
 	}
@@ -359,14 +356,12 @@ func (f *Flashlight) StartBackgroundServices() (func(), error) {
 	if err != nil {
 		return func() {
 			stopMonitor()
-			stopBypass()
 			stopGlobalConfigFetch()
 		}, fmt.Errorf("unable to start config service: %w", err)
 	}
 
 	return func() {
 		stopMonitor()
-		stopBypass()
 		stopGlobalConfigFetch()
 		stopConfigService()
 	}, nil
@@ -404,8 +399,6 @@ func (f *Flashlight) onGlobalConfig(cfg *config.Global, src config.Source) {
 	f.applyOtel(cfg)
 	f.callbacks.onConfigUpdate(cfg, src)
 	f.callbacks.onInit()
-
-	common.SetDNSTTConfig(cfg.DNSTTConfig)
 }
 
 // EnabledFeatures gets all features enabled based on current conditions

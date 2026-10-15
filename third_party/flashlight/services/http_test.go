@@ -3,7 +3,6 @@ package services
 import (
 	"bytes"
 	"io"
-	"math"
 	mrand "math/rand/v2"
 	"net/http"
 	"strconv"
@@ -34,7 +33,7 @@ func TestPost(t *testing.T) {
 	testBackoff := func(t *testing.T, rt *mockRoundTripper) {
 		sdr := &sender{}
 		for i := 0; i < 5; i++ {
-			wait := time.Duration(math.Pow(2, float64(i))) * retryWaitSeconds
+			wait := time.Duration(1<<i) * minRetryWait
 			want := int64(wait.Seconds())
 			req, _ := http.NewRequest(http.MethodPost, "http://example.com", nil)
 			_, sleep, err = sdr.post(req, &http.Client{Transport: rt})

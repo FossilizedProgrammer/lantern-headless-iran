@@ -23,7 +23,7 @@ var (
 )
 
 const (
-	requestURL = "https://iantem.io/api/v1/issue"
+	requestURL = "https://df.iantem.io/api/v1/issue"
 )
 
 type Attachment struct {

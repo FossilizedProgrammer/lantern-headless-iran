@@ -41,7 +41,6 @@ func testRequest(testCase string, t *testing.T, requests chan *http.Request, htt
 		return
 	}
 	defer os.RemoveAll(tempDir)
-	//fronted.ConfigureForTest(t)
 
 	log.Debug("Making request")
 	httpClient := &http.Client{Transport: &http.Transport{

@@ -69,9 +69,6 @@ type Args struct {
 	// control-plane options
 	UpstreamProxy string `arg:"--upstream-proxy" help:"HTTP/HTTPS/SOCKS5 proxy used to fetch Lantern config, to reach Lantern's own (possibly IP-blocked) proxy servers, and as a last-resort data path when no Lantern proxy is reachable, e.g. socks5://127.0.0.1:1080"`
 	WithProxyless bool   `arg:"--with-proxyless" help:"Also try direct/smart dialing for control-plane requests (off by default)"`
-	EnableDNSTT   bool   `arg:"--enable-dnstt" help:"Enable the DNS tunnel transport (requires a reachable DoH/DoT resolver)"`
-	DoHResolver   string `arg:"--doh-resolver" help:"DoH resolver URL for the DNS tunnel"`
-	DoTResolver   string `arg:"--dot-resolver" help:"DoT resolver address for the DNS tunnel"`
 }
 
 func (Args) Version() string {

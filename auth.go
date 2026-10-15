@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/BurntSushi/toml"
@@ -31,11 +30,13 @@ func readAuth() {
 
 func login(ctx context.Context, client auth.Client, email, password string) error {
 	sp, _ := spinner.Start("Logging in")
-	defer sp.Stop()
-
 	resp, _, err := client.Login(ctx, email, password, deviceId)
-	if err != nil || !resp.Success {
+	sp.Stop()
+	if err != nil {
 		return fmt.Errorf("error logging in: %w", err)
+	}
+	if !resp.Success {
+		return fmt.Errorf("error logging in: server rejected the login")
 	}
 
 	userID = resp.LegacyID
@@ -81,20 +82,27 @@ func askForCredentials(inputEmail, inputPassword string) (string, string) {
 
 func signup(ctx context.Context, client auth.Client, email, password string) error {
 	sp, _ := spinner.Start("Signing up")
-	defer sp.Stop()
-
 	_, err := client.SignUp(ctx, email, password)
+	sp.Stop()
 	if err != nil {
 		return fmt.Errorf("error signing up: %w", err)
 	}
 
-	code, _ := passwordInput.Show("Please confirm your email address by entering the code sent to your email")
+	pterm.Info.Printfln("A confirmation code was sent to %s", email)
+	code, _ := pterm.DefaultInteractiveTextInput.Show("Enter the confirmation code from your email")
+	if code == "" {
+		return fmt.Errorf("confirmation code is required")
+	}
 
-	if result, err := client.SignupEmailConfirmation(ctx, &auth.ConfirmSignupRequest{
+	result, err := client.SignupEmailConfirmation(ctx, &auth.ConfirmSignupRequest{
 		Email: email,
 		Code:  code,
-	}); !result || err != nil {
+	})
+	if err != nil {
 		return fmt.Errorf("error confirming email: %w", err)
+	}
+	if !result {
+		return fmt.Errorf("error confirming email: server rejected the code")
 	}
 
 	pterm.Info.Println("Email confirmed successfully, logging in")
@@ -112,18 +120,15 @@ func authClientOptions() []auth.Option {
 	if args.UpstreamProxy != "" {
 		o = append(o, auth.WithUpstreamProxy(args.UpstreamProxy))
 	}
-	if !args.WithProxyless {
-		o = append(o, auth.WithoutProxyless())
-	}
 	return o
 }
 
-func authCmd(ctx context.Context, cmd *AuthCmd, overrideAuthURL string, logWriter io.Writer) {
+func authCmd(ctx context.Context, cmd *AuthCmd, overrideAuthURL string) {
 	authUrl := auth.DefaultAPIURL
 	if overrideAuthURL != "" {
 		authUrl = overrideAuthURL
 	}
-	client := auth.NewClient(authUrl, args.Insecure, logWriter, authClientOptions()...)
+	client := auth.NewClient(authUrl, args.Insecure, authClientOptions()...)
 	var err error
 	switch {
 	case cmd.Login != nil:

@@ -13,9 +13,6 @@ import (
 
 func TestMain(m *testing.M) {
 
-	//log.Debug(cfg.Client.FrontedProviders())
-	//fronted.Configure(certs, cfg.Client.FrontedProviders(), config.DefaultFrontedProviderID, filepath.Join(tempConfigDir, "masquerade_cache"))
-
 	geolookup.GetCountry(1 * time.Minute)
 	os.Exit(m.Run())
 }

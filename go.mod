@@ -7,11 +7,9 @@ require (
 	github.com/BurntSushi/toml v1.2.1
 	github.com/alexflint/go-arg v1.4.3
 	github.com/getlantern/appdir v0.0.0-20200615192800-a0ef1968f4da
+	github.com/getlantern/common v1.2.1-0.20250402192417-b36070b37ded
 	github.com/getlantern/flashlight/v7 v7.6.240
-	github.com/getlantern/fronted v0.0.0-20260220001536-2f158428bf15
 	github.com/getlantern/golog v0.0.0-20230503153817-8e72de7e0a65
-	github.com/getlantern/kindling v0.0.0-20260219202502-df15c15dc5fb
-	github.com/goccy/go-yaml v1.19.0
 	github.com/google/uuid v1.6.0
 	github.com/pterm/pterm v0.12.80
 	github.com/stretchr/testify v1.11.1
@@ -94,7 +92,6 @@ require (
 	github.com/getlantern/cmux v0.0.0-20230301223233-dac79088a4c0 // indirect
 	github.com/getlantern/cmux/v2 v2.0.0-20230301223233-dac79088a4c0 // indirect
 	github.com/getlantern/cmuxprivate v0.0.0-20231025143958-503c5330c30b // indirect
-	github.com/getlantern/common v1.2.1-0.20250402192417-b36070b37ded // indirect
 	github.com/getlantern/context v0.0.0-20220418194847-3d5e7a086201 // indirect
 	github.com/getlantern/detour v0.0.0-20230503144615-d3106a68f79e // indirect
 	github.com/getlantern/dns v0.0.0-20240124035051-0d45dd3cfe54 // indirect
@@ -109,6 +106,7 @@ require (
 	github.com/getlantern/eventual/v2 v2.0.2 // indirect
 	github.com/getlantern/fdcount v0.0.0-20210503151800-5decd65b3731 // indirect
 	github.com/getlantern/filepersist v0.0.0-20210901195658-ed29a1cb0b7c // indirect
+	github.com/getlantern/fronted v0.0.0-20260105215156-9ae1d001d54f // indirect
 	github.com/getlantern/go-socks5 v0.0.0-20171114193258-79d4dd3e2db5 // indirect
 	github.com/getlantern/hellosplitter v0.1.1 // indirect
 	github.com/getlantern/hex v0.0.0-20220104173244-ad7e4b9194dc // indirect
@@ -121,6 +119,7 @@ require (
 	github.com/getlantern/kcpwrapper v0.0.0-20230327091313-c12d7c17c6de // indirect
 	github.com/getlantern/keepcurrent v0.0.0-20240126172110-2e0264ca385d // indirect
 	github.com/getlantern/keyman v0.0.0-20230503155501-4e864ca2175b // indirect
+	github.com/getlantern/kindling v0.0.0-20260219202502-df15c15dc5fb // indirect
 	github.com/getlantern/lantern-algeneva v0.0.0-20240930181006-6d3c00db1d5d // indirect
 	github.com/getlantern/lantern-water v0.0.0-20250331153903-07abebe611e8 // indirect
 	github.com/getlantern/meta-scrubber v0.0.1 // indirect
@@ -152,6 +151,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
+	github.com/goccy/go-yaml v1.19.0 // indirect
 	github.com/gofrs/uuid/v5 v5.3.2 // indirect
 	github.com/golang/gddo v0.0.0-20210115222349-20d68f94ee1f // indirect
 	github.com/golang/geo v0.0.0-20250402054851-dc45a1002b83 // indirect
@@ -263,7 +263,6 @@ require (
 	go.opentelemetry.io/otel/sdk v1.35.0 // indirect
 	go.opentelemetry.io/otel/trace v1.38.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.5.0 // indirect
-	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/mock v0.5.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
@@ -295,7 +294,5 @@ replace github.com/tetratelabs/wazero => github.com/refraction-networking/wazero
 replace github.com/getlantern/lantern-water => github.com/getlantern/lantern-water v0.0.0-20250123195039-121e25011cd3
 
 replace github.com/getlantern/flashlight/v7 => ./third_party/flashlight
-
-replace github.com/getlantern/fronted => ./third_party/fronted
 
 //replace github.com/anacrolix/confluence => github.com/anacrolix/confluence v1.15.1-0.20240712051721-b0799bfc4a73
