@@ -12,6 +12,12 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main]
+  # A release published by hand from the GitHub UI (existing or new tag)
+  # also gets its binaries built and attached here. Runs caused by the
+  # workflow's own GITHUB_TOKEN do not re-trigger this event, so a tag push
+  # never produces a duplicate run.
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:

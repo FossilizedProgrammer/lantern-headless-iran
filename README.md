@@ -1,156 +1,148 @@
 # lantern-headless-iran
 
-> **Unofficial fork of [`getlantern/lantern-headless-client`](https://github.com/getlantern/lantern-headless-client). Not affiliated with Lantern.**
+**English** · [فارسی](./README-fa.md) · [Русский](./README-ru.md)
 
-**[راهنمای کامل فارسی](./README-fa.md)** · [What changed](#what-this-fork-changes) · [Quick start](#quick-start)
+> **Unofficial** fork of [`getlantern/lantern-headless-client`](https://github.com/getlantern/lantern-headless-client). Not affiliated with Lantern.
 
-A headless Lantern client tuned for networks with **hard filtering** (tested in Iran), where:
+A Lantern client **without a graphical interface** (headless), made for networks with heavy
+filtering (tested in Iran). It opens two local ports, and your browser is pointed at them —
+your traffic then leaves through the Lantern network.
 
-- the IPs of Lantern's own proxy servers are usually **blocked**, and
-- local DNS is **poisoned** (public domains resolve to private IPs such as `10.10.34.36`).
+## Download
 
-The client exposes local **HTTP** and **SOCKS5** ports; the browser (or any app) is pointed at them.
+Binaries are compiled **automatically by GitHub Actions** and published on the
+[Releases](https://github.com/FossilizedProgrammer/lantern-headless-iran/releases) page.
+Nothing is uploaded from anyone's computer:
 
-## What this fork changes
-
-| Change | Why it matters here |
+| File | Platform |
 |---|---|
-| **Connections to Lantern's servers can go through `--upstream-proxy`** | Only that short-lived TCP connection travels through your healthy proxy (Tor, Psiphon, a Cloudflare relay, …), while user traffic still runs through Lantern's own transport and **exits from the Lantern network**. This is the difference between "the server IP is blocked" and "the proxy does not work". |
-| **Last-resort data path** | If no Lantern server is reachable at all, browser traffic falls back to the upstream proxy so the local ports keep answering instead of resetting every connection. |
-| **Poisoned-DNS handling** | When local DNS answers with a private IP, the client keeps the hostname so it is resolved remotely by the proxy server instead of dialing an unreachable address. |
-| **Clear startup diagnostics** | The client verifies the *data path* with a real request through its own proxy and reports `Data path OK` / `Data path is NOT working` (plus the egress IP), instead of only saying the ports are open. |
-| **`--upstream-proxy` also serves the control plane** (config + auth) | One flag covers config fetch, server dialing and the data-path fallback. |
-| **Server list with locations, and server pinning** | `servers` lists every server in the current config with its country and city; `start --server <name>` pins the connection to one server and ignores all the others. |
-| **`update` refreshes the server list on demand** | `lantern update --via upstream|direct|auto` fetches a fresh server list and saves it to `user.conf` so `start` uses it immediately. |
+| `lantern-headless-linux-amd64` | Linux, x86_64 |
+| `lantern-headless-windows-amd64.exe` | Windows, 64-bit |
 
-## Requirements
-
-- Go 1.24 or newer
-- Reachability to the Go module proxy (if `proxy.golang.org` is blocked: `go env -w GOPROXY=https://proxy.golang.org,https://goproxy.cn,direct`)
-
-## Build
-
-```shell
-go build -o bin/lantern .
-./bin/lantern --help
-```
+How it works: every push to `main` builds both binaries (to keep the build green), and every
+version tag `v*` additionally creates a **Release** containing those same two files.
 
 ## Quick start
 
+1. Download the binary for your system from **Releases**.
+2. Run it. The example below assumes you already have a working local proxy (Tor, Psiphon, …)
+   on port `1080`:
+
+**Linux**
+
 ```shell
-./bin/lantern --data-path data --upstream-proxy socks5://127.0.0.1:1080 start \
-  --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
+chmod +x lantern-headless-linux-amd64
+./lantern-headless-linux-amd64 --data-path ./data --upstream-proxy socks5://127.0.0.1:1080 \
+  start --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
 ```
 
-`--upstream-proxy` accepts `socks5://`, `http://` or `https://` and should point at a proxy that
-already works on your network (Tor, Psiphon, …). Then point the browser at the ports above.
+**Windows (Command Prompt)**
 
-**Firefox** (recommended, because local DNS is poisoned):
+```bat
+lantern-headless-windows-amd64.exe --data-path data --upstream-proxy socks5://127.0.0.1:1080 start --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
+```
+
+`--upstream-proxy` is optional but strongly recommended on filtered networks. It accepts
+`socks5://`, `http://` or `https://` and is used for everything at once: fetching the config,
+opening the connection to Lantern's own servers (their IPs are often blocked), and as a
+last-resort data path.
+
+3. Point your browser at the local ports:
+
+**Firefox** (recommended — local DNS is usually poisoned):
 `Settings → General → Network Settings → Manual proxy configuration` → SOCKS Host `127.0.0.1`,
-port `18071`, type **SOCKS v5**, and tick **`Proxy DNS when using SOCKS5`**.
+port `18071`, type **SOCKS v5**, tick **"Proxy DNS when using SOCKS5"**.
 
-**Chrome/Chromium**: `google-chrome --proxy-server="socks5://127.0.0.1:18071"`, or set the system
-HTTP proxy to `127.0.0.1:18070`.
+**Chrome/Chromium**
 
-> Without a proxy configured in the browser, traffic stays direct and will not get through a
-> filtered network. This client is headless: it never takes over system traffic by itself.
+```shell
+google-chrome --proxy-server="socks5://127.0.0.1:18071"
+```
+
+> The client is headless: it never changes system settings by itself. If the browser is not
+> configured, traffic stays direct and will not pass through the filter.
 
 ## What the startup messages mean
 
 ```
 SUCCESS  Control plane reachable (config fetched successfully)
 INFO     Local proxy is listening — SOCKS5: 127.0.0.1:18071  HTTP: 127.0.0.1:18070
-INFO     Verifying the data path with a real request through that proxy...
 SUCCESS  Data path OK — HTTP 204 from https://www.google.com/generate_204 in 803ms
 INFO     Traffic leaves this machine through IP 31.171.100.110
 ```
 
-- **Control plane reachable** — the config was fetched. It says nothing about browser traffic and
-  it also appears without `--upstream-proxy`.
-- **Local proxy is listening** — the ports are bound (listening ≠ working).
-- **Data path OK / NOT working** — the only line that reflects what the browser will experience:
-  a real request is sent through the local proxy (2 endpoints × 3 attempts). On failure the client
-  prints a `Hint:` telling you whether `--upstream-proxy` is missing or whether the upstream itself
-  is unreachable.
-- **Traffic leaves this machine through IP …** — the public IP the destination sees, i.e. whether
-  traffic actually exits through a proxy.
+- **Control plane reachable** — the config was downloaded. It says nothing about browser traffic.
+- **Local proxy is listening** — the ports are open (open ≠ working).
+- **Data path OK / NOT working** — the line that matters: the client made a real request through
+  its own proxy. On failure, the `Hint:` line right below tells you what to fix.
+- **Traffic leaves this machine through IP …** — the public IP that the destination sees.
 
-## Listing servers and pinning to one
+## Commands
 
-`servers` shows every server in the current config with its geographic location (as reported by
-Lantern's own config). Without `--refresh` it reads the cached list from `<data-path>/user.conf`
-(written by any successful `start`); `--refresh` fetches a fresh list through the control plane
-using the same flags as `start` (`--upstream-proxy`, …):
-
-```shell
-./bin/lantern --data-path data servers --refresh
-./bin/lantern --data-path data servers --json   # machine-readable
-./bin/lantern --data-path data servers --check  # probe each server: open or IP-blocked
-```
-
-With `--check` every server is TCP-probed in parallel and the table gains a `Reachable` column
-(`open` / `unreachable`), plus a count. An `unreachable` server is almost certainly IP-blocked
-from your network — it may still work through `--upstream-proxy`.
-
-```
-Name              | Address          | Protocol | Country       | City
-flaky-frankfurt-01| 198.51.100.10:443| https    | DE Germany    | Frankfurt
-sunny-tokyo-02    | 203.0.113.10:443 | https    | JP Japan      | Tokyo
-```
-
-To force the client onto one specific server, pass the name to `start` (matching is
-case-insensitive; all other servers are removed from the config before any dialer is built):
-
-```shell
-./bin/lantern --data-path data start --server sunny-tokyo-02 \
-  --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
-```
-
-The client logs `Using pinned server "sunny-tokyo-02" (Tokyo, Japan)` once the server appears in
-the config, and warns with the list of available names if it does not. Note the trade-off: with
-pinning there is **no failover** — if that server is blocked or dies, the connection fails until
-you pick another one or drop the flag.
-
-## Updating the server list
-
-`update` tells the client to refresh its server list right now — pick the transport yourself:
-
-```shell
-./bin/lantern --data-path data update --via upstream   # through --upstream-proxy
-./bin/lantern --data-path data update --via direct     # direct connection
-./bin/lantern --data-path data update                  # auto: upstream (if set) → direct
-./bin/lantern --data-path data update --json           # machine-readable
-./bin/lantern --data-path data update --check          # also probe which servers are reachable
-```
-
-The fetched list is saved to `<data-path>/user.conf`, so a following `start` (or `servers` without
-`--refresh`) uses it immediately — even if the config service stays unreachable afterwards.
-`--via upstream` requires `--upstream-proxy`; if every transport fails, the hint points at passing
-`--upstream-proxy socks5://127.0.0.1:<port-of-a-working-proxy>`.
-
-## Useful flags
-
-| Flag | Meaning |
+| Command | What it does |
 |---|---|
-| `--upstream-proxy` | `socks5://` / `http://` / `https://` proxy used for config fetch, for reaching Lantern's (possibly IP-blocked) servers, and as the last-resort data path |
-| `--data-path` | Where config, logs and data live |
-| `--with-proxyless` | Enable smart dialing for control-plane requests (off by default) |
-| `--server <name>` | Pin `start` to a single server by name (see the `servers` command) |
-| `update [--via upstream\|direct\|auto] [--json] [--check]` | Refresh the cached server list over the chosen transport; `--check` probes which servers are reachable |
-| `servers [--refresh] [--json] [--check]` | List Lantern servers and their country/city; `--check` adds per-server reachability |
+| `start` | Starts the local HTTP + SOCKS5 proxy |
+| `update [--via upstream\|direct\|auto] [--check] [--json]` | Refreshes the saved server list |
+| `servers [--refresh] [--check] [--json]` | Lists servers with country/city; `--check` shows which are reachable |
+| `start --server <name>` | Pins the connection to a single server (no automatic failover) |
+| `auth login / signup / logout` | Log in to / create a Lantern account |
+| `--help`, `--version` | Help and version |
 
-Run `./bin/lantern --help` for the full list.
+Examples (the global flags go **before** the command):
 
-## Documentation
+```shell
+./lantern-headless-linux-amd64 --data-path ./data update --via upstream
+./lantern-headless-linux-amd64 --data-path ./data servers --check
+./lantern-headless-linux-amd64 --data-path ./data start --server sunny-tokyo-02
+```
 
-The **[Persian guide](./README-fa.md)** covers the full workflow: refreshing the server list
-with `update`, pinning a server, diagnosing dead servers, and the meaning of every log line
-(`i/o timeout`, `Fell back to the upstream proxy`, `keeping the hostname …`).
+## Main options
 
-## Credits and license
+| Option | Meaning |
+|---|---|
+| `--upstream-proxy` | Your healthy proxy: config fetch, reaching Lantern servers, last-resort path |
+| `--data-path` | Where config and logs live (default `~/.lantern-headless`) |
+| `--server <name>` | Pin `start` to one server by name (see `servers`) |
+| `--with-proxyless` | Also try direct/smart dialing for control requests (off by default) |
+| `--debug` / `--quiet` / `--raw` | Logging |
 
-Based on the [Lantern headless client](https://github.com/getlantern/lantern-headless-client) by
-The Lantern Team. Changes in this fork are released under the same
-[Apache License 2.0](./LICENSE).
+Full list: `--help`.
 
-Lantern is a trademark of its owners; this project is an independent, unofficial fork.
+## Troubleshooting
+
+- **`update` fails** — try `--via direct` first; if that fails too, set `--upstream-proxy` to a
+  working proxy (direct access to the config service is usually blocked). `HTTP 401/403` means
+  you should run `auth login` first.
+- **`bind: address already in use`** — the port is taken; give other ports to
+  `--http-proxy-addr` / `--socks-proxy-addr`.
+- **SOCKS connects but pages don't open** — Lantern's servers are unreachable from your network;
+  enable `--upstream-proxy`. If the log says `Fell back to the upstream proxy`, traffic is
+  leaving through your proxy instead of the Lantern network.
+- **A site resolves to `10.x.x.x`** — local DNS is poisoned; the client notices and resolves the
+  hostname remotely (log line: `keeping the hostname so it is resolved remotely`).
+
+## Build from source
+
+Requires [Go](https://go.dev/dl/) 1.24 or newer:
+
+```shell
+go build -o bin/lantern .
+./bin/lantern --help
+```
+
+## What this fork changes
+
+- **`--upstream-proxy` does everything at once**: fetches the config, opens the (often blocked)
+  TCP connection to Lantern's servers, and acts as the last-resort data path — so the local
+  ports keep answering even when no Lantern server is reachable directly.
+- **Poisoned-DNS handling**: a private IP returned by local DNS is never dialed; the hostname is
+  kept and resolved remotely by the server.
+- **`servers` and `update` commands**: server list with locations, reachability checks, and
+  pinning `start` to one server.
+- **Honest startup diagnostics**: a real request is made through the proxy before it claims
+  anything works.
+
+## License
+
+[Apache License 2.0](./LICENSE) — same as upstream. Lantern is a trademark of its owners; this
+project is an independent, unofficial fork.
