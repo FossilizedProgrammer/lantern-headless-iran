@@ -36,6 +36,14 @@ radiance-engine:
 	cd radiance-engine && GOTOOLCHAIN=$(RADIANCE_TOOLCHAIN) go build -tags "$(RADIANCE_TAGS)" -o ../bin/lantern-radiance .
 	@echo "Built bin/lantern-radiance"
 
+# One-shot local builds of the CLI + radiance engine for a single platform.
+# Output goes to dist/ (see scripts/build-linux.sh and scripts/build-windows.sh).
+build-local-linux:
+	./scripts/build-linux.sh
+
+build-local-windows:
+	./scripts/build-windows.sh
+
 # Check if required environment variables are set
 check-env:
 	@mkdir -p build
@@ -86,6 +94,8 @@ help:
 	@echo "Available targets:"
 	@echo "  build    - Build the application (requires PLATFORM, ARCH, IMAGE and VERSION)"
 	@echo "  radiance-engine - Build the radiance engine helper (bin/lantern-radiance) natively"
+	@echo "  build-local-linux   - Build dist/ for Linux (CLI + radiance helper)"
+	@echo "  build-local-windows - Cross-build dist/ for Windows (CLI + radiance helper)"
 	@echo "  clean    - Remove build/ contents"
 	@echo "  help     - Show this help message"
 	@echo ""
@@ -94,7 +104,7 @@ help:
 	@echo "  ARCH     - Target architecture"
 	@echo "  VERSION  - Build version"
 
-.PHONY: build clean help check-env package radiance-engine
+.PHONY: build clean help check-env package radiance-engine build-local-linux build-local-windows
 
 # Default target
 .DEFAULT_GOAL := help

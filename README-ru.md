@@ -204,6 +204,16 @@ make radiance-engine   # результат: bin/lantern-radiance
 В Linux он использует CGO; для кросс-сборки под Windows: `CGO_ENABLED=0 GOOS=windows GOARCH=amd64
 make radiance-engine`. Положите получившийся бинарник рядом с CLI.
 
+Чтобы собрать **всё** (CLI + движок radiance) для одной платформы одной командой, используйте скрипты:
+
+```shell
+./scripts/build-linux.sh     # dist/lantern-headless-linux-amd64 + dist/lantern-radiance
+./scripts/build-windows.sh   # dist/lantern-headless-windows-amd64.exe + dist/lantern-radiance.exe
+```
+
+(скрипту для Windows нужен MinGW-w64 для самого CLI; его движок radiance — чистый Go). То же самое
+доступно как `make build-local-linux` и `make build-local-windows`.
+
 ## Чем этот форк отличается от оригинала
 
 - **Движок radiance (`--engine radiance`)**: полный паритет с официальным клиентом Lantern v10 —

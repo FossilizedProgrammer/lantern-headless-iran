@@ -203,6 +203,16 @@ make radiance-engine   # خروجی: bin/lantern-radiance
 در لینوکس از CGO استفاده می‌کند؛ برای بیلد کراس ویندوز از `CGO_ENABLED=0 GOOS=windows GOARCH=amd64
 make radiance-engine` استفاده کنید. باینری حاصل را کنار CLI بگذارید.
 
+برای ساخت **هر دو** باینری (CLI + موتور radiance) یک‌جا، از این اسکریپت‌ها استفاده کنید:
+
+```shell
+./scripts/build-linux.sh     # dist/lantern-headless-linux-amd64 + dist/lantern-radiance
+./scripts/build-windows.sh   # dist/lantern-headless-windows-amd64.exe + dist/lantern-radiance.exe
+```
+
+(اسکریپت ویندوز برای خودِ CLI به MinGW-w64 نیاز دارد؛ موتور radiance آن pure Go است.) همین‌ها
+به‌صورت `make build-local-linux` و `make build-local-windows` هم در دسترس‌اند.
+
 ## این فورک چه فرقی با آپ‌استریم دارد؟
 
 - **موتور radiance (`--engine radiance`)**: برابری کامل با کلاینت رسمی لنترن نسخهٔ ۱۰ — همان

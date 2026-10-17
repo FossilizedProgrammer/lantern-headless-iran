@@ -204,6 +204,16 @@ make radiance-engine   # writes bin/lantern-radiance
 On Linux it uses CGO; for a Windows cross-build use `CGO_ENABLED=0 GOOS=windows GOARCH=amd64
 make radiance-engine`. Put the resulting helper next to the CLI.
 
+To build **everything** (CLI + radiance helper) for one platform in one step, use the scripts:
+
+```shell
+./scripts/build-linux.sh     # dist/lantern-headless-linux-amd64 + dist/lantern-radiance
+./scripts/build-windows.sh   # dist/lantern-headless-windows-amd64.exe + dist/lantern-radiance.exe
+```
+
+(the Windows script needs MinGW-w64 for the CLI; its radiance helper is pure Go). The same targets
+are available as `make build-local-linux` / `make build-local-windows`.
+
 ## What this fork changes
 
 - **Radiance engine (`--engine radiance`)**: full parity with the official Lantern v10 client —
