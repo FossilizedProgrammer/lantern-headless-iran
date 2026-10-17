@@ -33,7 +33,11 @@ type Client interface {
 }
 
 // const DefaultAPIURL = "https://api.iantem.io/v1"
-const DefaultAPIURL = "https://df.iantem.io/api/v1"
+//
+// df.getiantem.org is the Cloudflare-fronted alias of df.iantem.io (Google
+// answers 403 to Iranian IPs on the latter), so auth works without an upstream
+// proxy in filtered networks.
+const DefaultAPIURL = "https://df.getiantem.org/api/v1"
 
 // clientOptions configures how the auth HTTP client reaches the network.
 type clientOptions struct {

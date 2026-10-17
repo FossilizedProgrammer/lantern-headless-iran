@@ -6,7 +6,14 @@ import (
 
 const (
 	// UserConfigURL is the URL for fetching the per user proxy config.
-	UserConfigURL = "https://df.iantem.io/api/v1/config"
+	//
+	// This is the Cloudflare-fronted alias of df.iantem.io. Google's edge
+	// answers 403 to requests from Iranian IPs for df.iantem.io, so a plain
+	// direct fetch from Iran can never reach the config service there. The
+	// same origin behind Cloudflare is reachable; Lantern's own Radiance
+	// client uses exactly this alias (df.iantem.io -> df.getiantem.org) for
+	// restricted regions.
+	UserConfigURL = "https://df.getiantem.org/api/v1/config"
 
 	// UpdateServerURL is the URL of the update server. Different applications
 	// hit the server on separate paths "/update/<AppName>".

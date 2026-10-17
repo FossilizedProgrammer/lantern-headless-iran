@@ -17,6 +17,25 @@ VERSION ?= $(subst v,,$(LATEST_TAG))
 
 LDFLAGS := -s -w -X github.com/oldblocker/lantern-headless-iran/shared.RevisionDate=$(REVISION_DATE) -X github.com/oldblocker/lantern-headless-iran/shared.BuildDate=$(BUILD_DATE) -X github.com/oldblocker/lantern-headless-iran/shared.ApplicationVersion=$(VERSION)
 
+# The radiance engine (full parity with official Lantern v10) is a separate
+# module. It needs the "novpn" build tag (SOCKS/HTTP proxy instead of a TUN
+# device) plus sing-box's protocol tags, and MUST be built with Go 1.26.x:
+# sing-box reaches into golang.org/x/net/http2 via //go:linkname, and Go 1.27
+# elides the target symbol, producing an "undefined reference to
+# ...http2.(*Transport).connPool" link error.
+#
+# CGO: the Linux build needs CGO_ENABLED=1 (outline-sdk resolves CNAMEs through
+# libc getaddrinfo). The Windows build uses outline-sdk's pure-Go path, so it
+# cross-compiles with CGO_ENABLED=0:
+#   CGO_ENABLED=0 GOOS=windows GOARCH=amd64 make radiance-engine
+RADIANCE_TAGS ?= novpn,with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme
+RADIANCE_TOOLCHAIN ?= go1.26.9
+
+radiance-engine:
+	@mkdir -p bin
+	cd radiance-engine && GOTOOLCHAIN=$(RADIANCE_TOOLCHAIN) go build -tags "$(RADIANCE_TAGS)" -o ../bin/lantern-radiance .
+	@echo "Built bin/lantern-radiance"
+
 # Check if required environment variables are set
 check-env:
 	@mkdir -p build
@@ -66,6 +85,7 @@ proto:
 help:
 	@echo "Available targets:"
 	@echo "  build    - Build the application (requires PLATFORM, ARCH, IMAGE and VERSION)"
+	@echo "  radiance-engine - Build the radiance engine helper (bin/lantern-radiance) natively"
 	@echo "  clean    - Remove build/ contents"
 	@echo "  help     - Show this help message"
 	@echo ""
@@ -74,7 +94,7 @@ help:
 	@echo "  ARCH     - Target architecture"
 	@echo "  VERSION  - Build version"
 
-.PHONY: build clean help check-env package
+.PHONY: build clean help check-env package radiance-engine
 
 # Default target
 .DEFAULT_GOAL := help

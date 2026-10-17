@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/getlantern/golog"
@@ -70,8 +71,13 @@ func main() {
 	case args.Auth != nil:
 		authCmd(ctx, args.Auth, args.AuthURL)
 	case args.Serve != nil:
-		readAuth()
-		serve(args.Serve)
+		switch strings.ToLower(strings.TrimSpace(args.Serve.Engine)) {
+		case "radiance", "beta":
+			serveRadiance(ctx, args.Serve)
+		default:
+			readAuth()
+			serve(args.Serve)
+		}
 	case args.Servers != nil:
 		serversCmd(args.Servers)
 	case args.Update != nil:

@@ -5,6 +5,12 @@ name: Build & Release
 #   • tag like v1.0.0   → build + create a GitHub Release with the same
 #                          binaries (what the MischiefPingu in-app updater
 #                          downloads)
+#
+# Two binaries are produced per platform:
+#   • lantern-headless-*          — the CLI (flashlight engine + radiance launcher)
+#   • lantern-radiance(.exe)      — the radiance engine helper (official v10
+#                                   data plane) that `start --engine radiance`
+#                                   spawns. It must sit next to the CLI.
 
 on:
   push:
@@ -35,19 +41,27 @@ jobs:
             cc: gcc
             cxx: g++
             asset: lantern-headless-linux-amd64
+            # The Linux radiance engine needs CGO (outline-sdk resolves CNAMEs
+            # through libc getaddrinfo), so it is built with the native gcc.
+            radiance_asset: lantern-radiance
+            radiance_cgo: "1"
           - goos: windows
             goarch: amd64
             cc: x86_64-w64-mingw32-gcc
             cxx: x86_64-w64-mingw32-g++
             asset: lantern-headless-windows-amd64.exe
+            # The Windows engine builds fully in pure Go (!unix path of
+            # outline-sdk), so it is cross-compiled with CGO disabled.
+            radiance_asset: lantern-radiance.exe
+            radiance_cgo: "0"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # CGO is required (go-llsqlite/crawshaw, go-libutp), so the Windows
-      # binary is cross-compiled with MinGW instead of a native Windows
-      # runner. Both CC and CXX must point at the MinGW toolchain.
+      # CGO is required by the CLI (go-llsqlite/crawshaw, go-libutp), so the
+      # Windows binary is cross-compiled with MinGW instead of a native
+      # Windows runner. Both CC and CXX must point at the MinGW toolchain.
       - name: Install MinGW for the Windows cross-build
         if: matrix.goos == 'windows'
         run: |
@@ -59,7 +73,7 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build
+      - name: Build CLI
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
@@ -84,11 +98,36 @@ jobs:
             -o "dist/${{ matrix.asset }}" .
           echo "Built $(ls -la dist/)"
 
-      - name: Upload artifact
+      # The radiance engine lives in its own module (radiance-engine/). It needs
+      # the "novpn" tag (HTTP/SOCKS proxy instead of a TUN device) plus
+      # sing-box's protocol tags, and MUST be built with Go 1.26.x: sing-box
+      # reaches golang.org/x/net/http2 through //go:linkname, and Go 1.27 elides
+      # the target symbol (link error). setup-go installs the root toolchain
+      # (go.mod) and GOTOOLCHAIN=go1.26.9 switches for this build.
+      - name: Build radiance engine
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: ${{ matrix.radiance_cgo }}
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+          GOTOOLCHAIN: go1.26.9
+        run: |
+          set -euo pipefail
+          RADIANCE_TAGS="novpn,with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme"
+          cd radiance-engine
+          go build -buildvcs=false -trimpath -tags "$RADIANCE_TAGS" \
+            -o "../dist/${{ matrix.radiance_asset }}" .
+          cd ..
+          echo "Built $(ls -la dist/)"
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}
-          path: dist/${{ matrix.asset }}
+          path: |
+            dist/${{ matrix.asset }}
+            dist/${{ matrix.radiance_asset }}
           if-no-files-found: error
           retention-days: 14
 
@@ -104,9 +143,11 @@ jobs:
           merge-multiple: true
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: actions/softprops/action-gh-release@v2
         with:
           files: |
             dist/lantern-headless-linux-amd64
             dist/lantern-headless-windows-amd64.exe
+            dist/lantern-radiance
+            dist/lantern-radiance.exe
           generate_release_notes: true
