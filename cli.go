@@ -46,10 +46,11 @@ type UpdateCmd struct {
 }
 
 type ServersCmd struct {
-	Refresh    bool `arg:"--refresh" help:"Fetch a fresh server list from Lantern's config service instead of using the cached one"`
-	JSON       bool `arg:"--json" help:"Print the list as JSON"`
-	Check      bool `arg:"--check" help:"Probe each server (TCP 443) and show whether it is directly reachable or likely IP-blocked"`
-	TimeoutSec int  `arg:"--timeout" default:"45" help:"How long to wait for a fresh list when --refresh is set"`
+	Refresh    bool   `arg:"--refresh" help:"Fetch a fresh server list from Lantern's config service instead of using the cached one"`
+	JSON       bool   `arg:"--json" help:"Print the list as JSON"`
+	Check      bool   `arg:"--check" help:"Probe each server (TCP 443) and show whether it is directly reachable or likely IP-blocked"`
+	TimeoutSec int    `arg:"--timeout" default:"45" help:"How long to wait for a fresh list when --refresh is set"`
+	Engine     string `arg:"--engine" default:"flashlight" help:"Which engine's server list to fetch: flashlight (this client) or radiance (official v10 data plane, uses the lantern-radiance helper)"`
 }
 
 type Args struct {

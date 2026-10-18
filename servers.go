@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -43,6 +47,12 @@ type serverInfo struct {
 }
 
 func serversCmd(cmd *ServersCmd) {
+	switch strings.ToLower(strings.TrimSpace(cmd.Engine)) {
+	case "radiance", "beta":
+		serversViaRadiance(cmd)
+		return
+	}
+
 	var proxies map[string]*commonconfig.ProxyConfig
 	if cmd.Refresh {
 		timeout := time.Duration(cmd.TimeoutSec) * time.Second
@@ -84,6 +94,147 @@ func serversCmd(cmd *ServersCmd) {
 		return
 	}
 	printServers(infos)
+}
+
+// radianceServersPrefix is the marker line radiance-engine prints when asked
+// to list servers; everything before it is engine logging.
+const radianceServersPrefix = "RADIANCE_SERVERS_JSON "
+
+// serversViaRadiance fetches the server list through the official v10 engine
+// (lantern-radiance) instead of this client's own flashlight config service, so
+// the list matches the engine that actually serves the traffic.
+func serversViaRadiance(cmd *ServersCmd) {
+	timeout := time.Duration(cmd.TimeoutSec) * time.Second
+	pterm.Info.Printfln("Fetching the server list through the radiance engine (timeout: %s)...", timeout)
+	infos, err := fetchRadianceServers(timeout, cmd.Refresh, cmd.Check)
+	if err != nil {
+		pterm.Error.Printfln("Fetching the server list through radiance failed: %s", err)
+		pterm.Info.Println("Ensure the lantern-radiance helper is next to this binary (or set --radiance-engine / LANTERN_RADIANCE_ENGINE), and that an account/config is available (run `start --engine radiance` once).")
+		os.Exit(1)
+	}
+	if len(infos) == 0 {
+		pterm.Error.Println("The radiance engine returned an empty server list.")
+		os.Exit(1)
+	}
+	if cmd.Check && !anyReachability(infos) {
+		// The engine did not report reachability (older helper); fall back to a
+		// plain TCP probe so the flag still does something useful.
+		infos = withReachabilityAddrs(infos, probeTimeout)
+	}
+	if cmd.JSON {
+		b, jerr := json.MarshalIndent(infos, "", "  ")
+		if jerr != nil {
+			pterm.Error.Printfln("Failed to encode JSON: %s", jerr)
+			os.Exit(1)
+		}
+		fmt.Println(string(b))
+		return
+	}
+	printServers(infos)
+}
+
+// anyReachability reports whether any server carried a reachability result.
+func anyReachability(infos []serverInfo) bool {
+	for _, info := range infos {
+		if info.Reachable != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// fetchRadianceServers runs the lantern-radiance helper in --list-servers mode
+// and parses the JSON it returns. When refresh is set the helper waits for a
+// fresh fetch from the config service before printing. When check is set the
+// helper runs Radiance's own URL tests so each server carries a reachability
+// result from the exact path the engine would use.
+func fetchRadianceServers(timeout time.Duration, refresh, check bool) ([]serverInfo, error) {
+	enginePath, err := locateRadianceEngine()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	logLevel := "info"
+	if args.Debug {
+		logLevel = "debug"
+	}
+	argv := []string{
+		"--data-path", args.DataPath,
+		"--list-servers",
+		"--log-level", logLevel,
+	}
+	if refresh {
+		argv = append(argv, "--refresh")
+	}
+	if check {
+		argv = append(argv, "--check")
+	}
+	if args.UpstreamProxy != "" {
+		argv = append(argv, "--upstream-proxy", args.UpstreamProxy)
+	}
+	if args.WithProxyless {
+		argv = append(argv, "--proxyless")
+	}
+	if args.Insecure {
+		argv = append(argv, "--insecure")
+	}
+
+	proc := exec.CommandContext(ctx, enginePath, argv...)
+	var stdout, stderr bytes.Buffer
+	proc.Stdout = &stdout
+	proc.Stderr = &stderr
+	runErr := proc.Run()
+
+	if line, ok := firstLineWithPrefix(stdout.String(), radianceServersPrefix); ok {
+		var infos []serverInfo
+		if jerr := json.Unmarshal([]byte(strings.TrimPrefix(line, radianceServersPrefix)), &infos); jerr != nil {
+			return nil, fmt.Errorf("could not parse the engine's server list: %w", jerr)
+		}
+		return infos, nil
+	}
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("timed out after %s waiting for the radiance engine", timeout)
+	}
+	msg := strings.TrimSpace(stderr.String())
+	if msg == "" && runErr != nil {
+		msg = runErr.Error()
+	}
+	if msg == "" {
+		msg = "the radiance engine returned no server list"
+	}
+	return nil, errors.New(msg)
+}
+
+// firstLineWithPrefix returns the first line beginning with prefix.
+func firstLineWithPrefix(s, prefix string) (string, bool) {
+	for _, line := range strings.Split(s, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimRight(line, "\r"), true
+		}
+	}
+	return "", false
+}
+
+// withReachabilityAddrs is like withReachability but for the plain serverInfo
+// list returned by the radiance engine (which has no ProxyConfig map).
+func withReachabilityAddrs(infos []serverInfo, timeout time.Duration) []serverInfo {
+	proxies := make(map[string]*commonconfig.ProxyConfig, len(infos))
+	for i, info := range infos {
+		if info.Address == "" {
+			continue
+		}
+		proxies[info.Name+"#"+strconv.Itoa(i)] = &commonconfig.ProxyConfig{Addr: info.Address}
+	}
+	probe := probeServers(proxies, timeout)
+	for i := range infos {
+		if reachable, ok := probe[infos[i].Address]; ok {
+			infos[i].Reachable = &reachable
+		}
+	}
+	return infos
 }
 
 // fetchServers runs the Lantern client just long enough to fetch a fresh
@@ -245,9 +396,9 @@ func printServers(infos []serverInfo) {
 	_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
 
 	if checked {
-		pterm.Info.Printfln("%d of %d servers directly reachable (TCP 443)", open, len(infos))
+		pterm.Info.Printfln("%d of %d servers reachable", open, len(infos))
 		if open < len(infos) {
-			pterm.Info.Println("Unreachable servers are likely IP-blocked; they may still work through --upstream-proxy.")
+			pterm.Info.Println("Unreachable servers are likely IP-blocked; they may still work through --upstream-proxy or another engine.")
 		}
 	}
 
