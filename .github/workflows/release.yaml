@@ -6,11 +6,16 @@ name: Build & Release
 #                          binaries (what the MischiefPingu in-app updater
 #                          downloads)
 #
-# Two binaries are produced per platform:
-#   • lantern-headless-*          — the CLI (flashlight engine + radiance launcher)
-#   • lantern-radiance(.exe)      — the radiance engine helper (official v10
-#                                   data plane) that `start --engine radiance`
-#                                   spawns. It must sit next to the CLI.
+# Each platform publishes ONE archive that bundles both binaries, so the
+# MischiefPingu in-app updater (and manual users) get everything in one file:
+#   • lantern-headless-linux-amd64.tar.gz  → lantern          + lantern-radiance
+#   • lantern-headless-windows-amd64.zip   → lantern.exe      + lantern-radiance.exe
+#
+# The two binaries:
+#   • lantern(.exe)          — the CLI (flashlight engine + radiance launcher)
+#   • lantern-radiance(.exe) — the radiance engine helper (official v10 data
+#                              plane) that `start --engine radiance` spawns.
+#                              It must sit next to the CLI.
 
 on:
   push:
@@ -40,7 +45,8 @@ jobs:
             goarch: amd64
             cc: gcc
             cxx: g++
-            asset: lantern-headless-linux-amd64
+            cli_asset: lantern
+            archive: lantern-headless-linux-amd64.tar.gz
             # The Linux radiance engine needs CGO (outline-sdk resolves CNAMEs
             # through libc getaddrinfo), so it is built with the native gcc.
             radiance_asset: lantern-radiance
@@ -49,7 +55,8 @@ jobs:
             goarch: amd64
             cc: x86_64-w64-mingw32-gcc
             cxx: x86_64-w64-mingw32-g++
-            asset: lantern-headless-windows-amd64.exe
+            cli_asset: lantern.exe
+            archive: lantern-headless-windows-amd64.zip
             # The Windows engine builds fully in pure Go (!unix path of
             # outline-sdk), so it is cross-compiled with CGO disabled.
             radiance_asset: lantern-radiance.exe
@@ -95,7 +102,7 @@ jobs:
               -X ${MODULE}/shared.ApplicationVersion=${VERSION} \
               -X ${MODULE}/shared.RevisionDate=${STAMP} \
               -X ${MODULE}/shared.BuildDate=${STAMP}" \
-            -o "dist/${{ matrix.asset }}" .
+            -o "dist/${{ matrix.cli_asset }}" .
           echo "Built $(ls -la dist/)"
 
       # The radiance engine lives in its own module (radiance-engine/). It needs
@@ -121,13 +128,27 @@ jobs:
           cd ..
           echo "Built $(ls -la dist/)"
 
+      # Bundle both binaries into the single archive the app updater downloads.
+      - name: Package archive
+        run: |
+          set -euo pipefail
+          cd dist
+          if [[ "${{ matrix.goos }}" == "windows" ]]; then
+            zip -X "${{ matrix.archive }}" \
+              "${{ matrix.cli_asset }}" "${{ matrix.radiance_asset }}"
+          else
+            tar -czf "${{ matrix.archive }}" \
+              "${{ matrix.cli_asset }}" "${{ matrix.radiance_asset }}"
+          fi
+          echo "Packaged $(ls -la "${{ matrix.archive }}")"
+          tar -tf "${{ matrix.archive }}" 2>/dev/null || \
+            unzip -l "${{ matrix.archive }}"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset }}
-          path: |
-            dist/${{ matrix.asset }}
-            dist/${{ matrix.radiance_asset }}
+          name: ${{ matrix.archive }}
+          path: dist/${{ matrix.archive }}
           if-no-files-found: error
           retention-days: 14
 
@@ -146,8 +167,6 @@ jobs:
         uses: actions/softprops/action-gh-release@v2
         with:
           files: |
-            dist/lantern-headless-linux-amd64
-            dist/lantern-headless-windows-amd64.exe
-            dist/lantern-radiance
-            dist/lantern-radiance.exe
+            dist/lantern-headless-linux-amd64.tar.gz
+            dist/lantern-headless-windows-amd64.zip
           generate_release_notes: true

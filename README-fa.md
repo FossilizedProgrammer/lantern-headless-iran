@@ -31,40 +31,40 @@
 
 باینری‌ها را **خودِ GitHub Actions می‌سازد** و در صفحهٔ
 [Releases](https://github.com/FossilizedProgrammer/lantern-headless-iran/releases) می‌گذارد —
-**چیزی از روی هیچ کامپیوتری آپلود نمی‌شود**:
+**چیزی از روی هیچ کامپیوتری آپلود نمی‌شود**. هر ریلیز **یک آرشیو برای هر سیستم‌عامل** منتشر
+می‌کند که **هر دو باینری** را در خود دارد:
 
-| فایل | سیستم‌عامل | چیست |
+| فایل | سیستم‌عامل | محتوا |
 |---|---|---|
-| `lantern-headless-linux-amd64` | لینوکس، x86_64 | خودِ CLI |
-| `lantern-headless-windows-amd64.exe` | ویندوز، ۶۴ بیت | خودِ CLI |
-| `lantern-radiance` | لینوکس، x86_64 | باینری کمکی موتور نسخهٔ ۱۰ |
-| `lantern-radiance.exe` | ویندوز، ۶۴ بیت | باینری کمکی موتور نسخهٔ ۱۰ |
+| `lantern-headless-linux-amd64.tar.gz` | لینوکس، x86_64 | `lantern` (CLI) + `lantern-radiance` (موتور نسخهٔ ۱۰) |
+| `lantern-headless-windows-amd64.zip` | ویندوز، ۶۴ بیت | `lantern.exe` (CLI) + `lantern-radiance.exe` (موتور نسخهٔ ۱۰) |
 
-**برای `--engine radiance` فایل `lantern-radiance` (در ویندوز `lantern-radiance.exe`) را در همان
-پوشهٔ CLI بگذارید.** CLI آن را کنار خودش (یا در `--radiance-engine` یا `$PATH`) جست‌وجو می‌کند.
-`--engine flashlight` به آن نیازی ندارد.
+آرشیو را باز کنید — هر دو فایل کنار هم در همان پوشه قرار می‌گیرند، یعنی همان‌جایی که CLI
+انتظار دارد. **برای `--engine radiance` فایل `lantern-radiance` (در ویندوز `lantern-radiance.exe`)
+را کنار CLI بگذارید.** CLI آن را کنار خودش (یا در `--radiance-engine` یا `$PATH`) جست‌وجو
+می‌کند. `--engine flashlight` به آن نیازی ندارد.
 
-چطور کار می‌کند: هر push به شاخهٔ `main` هر چهار باینری را می‌سازد (تا مطمئن شویم بیلد سالم است)،
-و هر تگ نسخه (`v*`) علاوه بر آن یک **Release** با همان فایل‌ها می‌سازد.
+چطور کار می‌کند: هر push به شاخهٔ `main` هر دو باینری را برای هر پلتفرم می‌سازد (تا مطمئن شویم
+بیلد سالم است)، و هر تگ نسخه (`v*`) علاوه بر آن یک **Release** با همان آرشیوها می‌سازد.
 
 ## شروع سریع (radiance — پیشنهادی)
 
-1. از **Releases** هم CLI و هم باینری کمکی `lantern-radiance` مناسب سیستم‌عامل خود را دانلود کنید
-   و در یک پوشه بگذارید.
+1. آرشیو مناسب سیستم‌عامل خود را از **Releases** دانلود و باز کنید (هر دو
+   `lantern` و `lantern-radiance` کنار هم قرار می‌گیرند).
 2. اجرا کنید — **به هیچ آپ‌استریمی نیاز نیست**:
 
 **لینوکس**
 
 ```shell
-chmod +x lantern-headless-linux-amd64 lantern-radiance
-./lantern-headless-linux-amd64 --data-path ./data start --engine radiance \
+chmod +x lantern lantern-radiance
+./lantern --data-path ./data start --engine radiance \
   --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
 ```
 
 **ویندوز (Command Prompt)**
 
 ```bat
-lantern-headless-windows-amd64.exe --data-path data start --engine radiance --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
+lantern.exe --data-path data start --engine radiance --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
 ```
 
 3. مرورگر را به پورت‌های محلی وصل کنید:
@@ -90,14 +90,14 @@ google-chrome --proxy-server="socks5://127.0.0.1:18071"
 **لینوکس**
 
 ```shell
-./lantern-headless-linux-amd64 --data-path ./data --upstream-proxy socks5://127.0.0.1:1080 \
+./lantern --data-path ./data --upstream-proxy socks5://127.0.0.1:1080 \
   start --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
 ```
 
 **ویندوز (Command Prompt)**
 
 ```bat
-lantern-headless-windows-amd64.exe --data-path data --upstream-proxy socks5://127.0.0.1:1080 start --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
+lantern.exe --data-path data --upstream-proxy socks5://127.0.0.1:1080 start --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
 ```
 
 `--upstream-proxy` پروتکل‌های `socks5://`، `http://` و `https://` را می‌پذیرد. در موتور
@@ -138,7 +138,7 @@ INFO     Traffic leaves this machine through IP 31.171.100.110
 |---|---|
 | `start [--engine radiance\|flashlight]` | اجرای پروکسی محلی HTTP + SOCKS5 |
 | `update [--via upstream\|direct\|auto] [--check] [--json]` | به‌روزرسانی فهرست ذخیره‌شدهٔ سرورها |
-| `servers [--refresh] [--check] [--json]` | فهرست سرورها با کشور/شهر؛ `--check` دسترسی‌پذیری را نشان می‌دهد |
+| `servers [--engine radiance\|flashlight] [--refresh] [--check] [--json]` | فهرست سرورها با کشور/شهر؛ `--check` دسترسی‌پذیری را نشان می‌دهد. منبع فهرست همان موتور انتخابی است |
 | `start --server <name>` | قفل‌کردن اتصال به یک سرور (بدون failover خودکار!) |
 | `auth login / signup / logout` | ورود / ثبت‌نام در لنترن |
 | `--help`, `--version` | راهنما و نسخه |
@@ -146,10 +146,11 @@ INFO     Traffic leaves this machine through IP 31.171.100.110
 مثال‌ها (پرچم‌های سراسری **قبل از** فرمان و پرچم‌های `start` بعد از آن می‌آیند):
 
 ```shell
-./lantern-headless-linux-amd64 --data-path ./data start --engine radiance
-./lantern-headless-linux-amd64 --data-path ./data update --via upstream
-./lantern-headless-linux-amd64 --data-path ./data servers --check
-./lantern-headless-linux-amd64 --data-path ./data start --engine radiance --server sunny-tokyo-02
+./lantern --data-path ./data start --engine radiance
+./lantern --data-path ./data update --via upstream
+./lantern --data-path ./data servers --check
+./lantern --data-path ./data servers --engine radiance --json
+./lantern --data-path ./data start --engine radiance --server sunny-tokyo-02
 ```
 
 ## گزینه‌های اصلی
@@ -169,7 +170,7 @@ INFO     Traffic leaves this machine through IP 31.171.100.110
 ## عیب‌یابی
 
 - **`could not find the lantern-radiance helper binary`** — فایل `lantern-radiance` (در ویندوز
-  `lantern-radiance.exe`) را از Releases دانلود و کنار CLI بگذارید، یا
+  `lantern-radiance.exe`) را از آرشیو ریلیز استخراج و کنار CLI بگذارید، یا
   `--radiance-engine /path/to/lantern-radiance` را بدهید.
 - **`--engine radiance` قبل از آماده‌شدن خارج می‌شود** — با `--debug` دوباره اجرا کنید تا لاگ خودِ
   موتور را ببینید؛ جزئیات در فایل لاگ داخل `--data-path` هم نوشته می‌شود.
@@ -206,8 +207,8 @@ make radiance-engine` استفاده کنید. باینری حاصل را کنا
 برای ساخت **هر دو** باینری (CLI + موتور radiance) یک‌جا، از این اسکریپت‌ها استفاده کنید:
 
 ```shell
-./scripts/build-linux.sh     # dist/lantern-headless-linux-amd64 + dist/lantern-radiance
-./scripts/build-windows.sh   # dist/lantern-headless-windows-amd64.exe + dist/lantern-radiance.exe
+./scripts/build-linux.sh     # dist/lantern-headless-linux-amd64.tar.gz   (lantern + lantern-radiance)
+./scripts/build-windows.sh   # dist/lantern-headless-windows-amd64.zip    (lantern.exe + lantern-radiance.exe)
 ```
 
 (اسکریپت ویندوز برای خودِ CLI به MinGW-w64 نیاز دارد؛ موتور radiance آن pure Go است.) همین‌ها

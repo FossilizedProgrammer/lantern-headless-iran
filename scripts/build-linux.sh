@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Build the Linux (amd64) binaries locally:
-#   dist/lantern-headless-linux-amd64   — the CLI
-#   dist/lantern-radiance               — the official v10 radiance engine helper
+# Build the Linux (amd64) binaries locally and bundle them exactly like the
+# release CI does:
+#   dist/lantern-headless-linux-amd64.tar.gz  → lantern + lantern-radiance
 #
 # Requirements: Go (>=1.24), a C toolchain (gcc/g++), and network access the
 # first time so the engine's Go 1.26.x toolchain and modules can be fetched.
@@ -20,8 +20,9 @@ MODULE="github.com/oldblocker/lantern-headless-iran"
 RADIANCE_TAGS="novpn,with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme"
 RADIANCE_TOOLCHAIN="${RADIANCE_TOOLCHAIN:-go1.26.9}"
 
-asset="lantern-headless-${GOOS_TARGET}-${GOARCH_TARGET}"
+cli_asset="lantern"
 engine_asset="lantern-radiance"
+archive="lantern-headless-${GOOS_TARGET}-${GOARCH_TARGET}.tar.gz"
 
 # ── version stamp (same scheme as the release CI) ────────────────────────────
 if git describe --tags --exact-match >/dev/null 2>&1; then
@@ -37,7 +38,7 @@ command -v gcc >/dev/null || { echo "error: gcc not found (needed for CGO)" >&2;
 
 mkdir -p "$OUT_DIR"
 OUT_DIR_ABS="$(cd "$OUT_DIR" && pwd)"
-echo "Building $asset (version $VERSION) ..."
+echo "Building $cli_asset (version $VERSION) ..."
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
 GOOS="$GOOS_TARGET" GOARCH="$GOARCH_TARGET" CGO_ENABLED=1 CC="${CC:-gcc}" CXX="${CXX:-g++}" \
@@ -46,7 +47,7 @@ GOOS="$GOOS_TARGET" GOARCH="$GOARCH_TARGET" CGO_ENABLED=1 CC="${CC:-gcc}" CXX="$
     -X ${MODULE}/shared.ApplicationVersion=${VERSION} \
     -X ${MODULE}/shared.RevisionDate=${REVISION_DATE} \
     -X ${MODULE}/shared.BuildDate=${BUILD_DATE}" \
-  -o "${OUT_DIR}/${asset}" .
+  -o "${OUT_DIR}/${cli_asset}" .
 
 # ── radiance engine (separate module; needs CGO on Linux) ────────────────────
 echo "Building $engine_asset (tags: $RADIANCE_TAGS, toolchain: $RADIANCE_TOOLCHAIN) ..."
@@ -58,12 +59,19 @@ echo "Building $engine_asset (tags: $RADIANCE_TAGS, toolchain: $RADIANCE_TOOLCHA
     -o "${OUT_DIR_ABS}/${engine_asset}" .
 )
 
+# ── bundle both binaries into the single release archive ─────────────────────
+echo "Packaging $archive ..."
+tar -czf "${OUT_DIR}/${archive}" -C "${OUT_DIR}" "$cli_asset" "$engine_asset"
+
 echo
 echo "Done. Output in ${OUT_DIR}/:"
-ls -la "${OUT_DIR}/${asset}" "${OUT_DIR}/${engine_asset}"
+ls -la "${OUT_DIR}/${archive}"
 echo
-echo "Run:"
-echo "  chmod +x ${OUT_DIR}/${asset} ${OUT_DIR}/${engine_asset}"
-echo "  ${OUT_DIR}/${asset} --data-path ./data start --engine radiance \\"
+echo "Archive contains:"
+tar -tf "${OUT_DIR}/${archive}"
+echo
+echo "Run (after extracting both files together):"
+echo "  chmod +x ${cli_asset} ${engine_asset}"
+echo "  ./${cli_asset} --data-path ./data start --engine radiance \\"
 echo "      --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071"
-echo "(keep ${OUT_DIR}/${engine_asset} next to the CLI)"
+echo "(keep ${engine_asset} next to the CLI)"

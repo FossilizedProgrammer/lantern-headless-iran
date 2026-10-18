@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Cross-build the Windows (amd64) binaries from Linux:
-#   dist/lantern-headless-windows-amd64.exe — the CLI
-#   dist/lantern-radiance.exe               — the official v10 radiance engine helper
+# Cross-build the Windows (amd64) binaries from Linux and bundle them exactly
+# like the release CI does:
+#   dist/lantern-headless-windows-amd64.zip  → lantern.exe + lantern-radiance.exe
 #
 # Requirements:
 #   • Go (>=1.24) and network access the first time (the engine pulls the
@@ -27,8 +27,9 @@ RADIANCE_TOOLCHAIN="${RADIANCE_TOOLCHAIN:-go1.26.9}"
 
 CC_HOST="${CC:-x86_64-w64-mingw32-gcc}"
 CXX_HOST="${CXX:-x86_64-w64-mingw32-g++}"
-asset="lantern-headless-windows-${GOARCH_TARGET}.exe"
+cli_asset="lantern.exe"
 engine_asset="lantern-radiance.exe"
+archive="lantern-headless-${GOOS_TARGET}-${GOARCH_TARGET}.zip"
 
 # ── version stamp (same scheme as the release CI) ────────────────────────────
 if git describe --tags --exact-match >/dev/null 2>&1; then
@@ -47,7 +48,7 @@ command -v "$CC_HOST" >/dev/null || {
 
 mkdir -p "$OUT_DIR"
 OUT_DIR_ABS="$(cd "$OUT_DIR" && pwd)"
-echo "Building $asset (version $VERSION) ..."
+echo "Building $cli_asset (version $VERSION) ..."
 
 # ── CLI (CGO via MinGW) ──────────────────────────────────────────────────────
 GOOS="$GOOS_TARGET" GOARCH="$GOARCH_TARGET" CGO_ENABLED=1 CC="$CC_HOST" CXX="$CXX_HOST" \
@@ -56,7 +57,7 @@ GOOS="$GOOS_TARGET" GOARCH="$GOARCH_TARGET" CGO_ENABLED=1 CC="$CC_HOST" CXX="$CX
     -X ${MODULE}/shared.ApplicationVersion=${VERSION} \
     -X ${MODULE}/shared.RevisionDate=${REVISION_DATE} \
     -X ${MODULE}/shared.BuildDate=${BUILD_DATE}" \
-  -o "${OUT_DIR}/${asset}" .
+  -o "${OUT_DIR}/${cli_asset}" .
 
 # ── radiance engine (pure Go on Windows → CGO off) ───────────────────────────
 echo "Building $engine_asset (tags: $RADIANCE_TAGS, toolchain: $RADIANCE_TOOLCHAIN, CGO=0) ..."
@@ -68,9 +69,17 @@ echo "Building $engine_asset (tags: $RADIANCE_TAGS, toolchain: $RADIANCE_TOOLCHA
     -o "${OUT_DIR_ABS}/${engine_asset}" .
 )
 
+# ── bundle both binaries into the single release archive ─────────────────────
+echo "Packaging $archive ..."
+rm -f "${OUT_DIR}/${archive}"
+( cd "${OUT_DIR}" && zip -X "$archive" "$cli_asset" "$engine_asset" )
+
 echo
 echo "Done. Output in ${OUT_DIR}/:"
-ls -la "${OUT_DIR}/${asset}" "${OUT_DIR}/${engine_asset}"
+ls -la "${OUT_DIR}/${archive}"
+echo
+echo "Archive contains:"
+unzip -l "${OUT_DIR}/${archive}"
 echo
 echo "On Windows, run (keep both files in the same folder):"
-echo "  ${asset} --data-path data start --engine radiance --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071"
+echo "  ${cli_asset} --data-path data start --engine radiance --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071"

@@ -31,40 +31,40 @@ browser setup is identical.
 
 Binaries are compiled **automatically by GitHub Actions** and published on the
 [Releases](https://github.com/FossilizedProgrammer/lantern-headless-iran/releases) page.
-Nothing is uploaded from anyone's computer:
+Nothing is uploaded from anyone's computer. Each release ships **one archive per platform
+that bundles both binaries**:
 
-| File | Platform | What it is |
+| File | Platform | Contents |
 |---|---|---|
-| `lantern-headless-linux-amd64` | Linux, x86_64 | the CLI |
-| `lantern-headless-windows-amd64.exe` | Windows, 64-bit | the CLI |
-| `lantern-radiance` | Linux, x86_64 | the v10 engine helper |
-| `lantern-radiance.exe` | Windows, 64-bit | the v10 engine helper |
+| `lantern-headless-linux-amd64.tar.gz` | Linux, x86_64 | `lantern` (CLI) + `lantern-radiance` (v10 engine) |
+| `lantern-headless-windows-amd64.zip` | Windows, 64-bit | `lantern.exe` (CLI) + `lantern-radiance.exe` (v10 engine) |
 
-**For `--engine radiance` put the `lantern-radiance` (`lantern-radiance.exe` on Windows) file in the
-same folder as the CLI.** The CLI looks for it next to itself (or at `--radiance-engine`, or in
-`$PATH`). `--engine flashlight` does not need it.
+Extract the archive — both files land in the same folder, which is exactly where the CLI
+expects the helper. **For `--engine radiance` keep `lantern-radiance` (`lantern-radiance.exe`
+on Windows) next to the CLI.** The CLI looks for it next to itself (or at `--radiance-engine`,
+or in `$PATH`). `--engine flashlight` does not need it.
 
-How it works: every push to `main` builds all four binaries (to keep the build green), and every
-version tag `v*` additionally creates a **Release** containing those same files.
+How it works: every push to `main` builds both binaries per platform (to keep the build
+green), and every version tag `v*` additionally creates a **Release** containing the archives.
 
 ## Quick start (radiance — recommended)
 
-1. Download the CLI **and** the matching `lantern-radiance` helper for your system from
-   **Releases**, and put them in the same folder.
+1. Download the archive for your system from **Releases** and extract it (both `lantern`
+   and `lantern-radiance` end up in the same folder).
 2. Run it — **no upstream proxy is required**:
 
 **Linux**
 
 ```shell
-chmod +x lantern-headless-linux-amd64 lantern-radiance
-./lantern-headless-linux-amd64 --data-path ./data start --engine radiance \
+chmod +x lantern lantern-radiance
+./lantern --data-path ./data start --engine radiance \
   --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
 ```
 
 **Windows (Command Prompt)**
 
 ```bat
-lantern-headless-windows-amd64.exe --data-path data start --engine radiance --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
+lantern.exe --data-path data start --engine radiance --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
 ```
 
 3. Point your browser at the local ports:
@@ -90,14 +90,14 @@ a working local proxy (Tor, Psiphon, …) on port `1080`:
 **Linux**
 
 ```shell
-./lantern-headless-linux-amd64 --data-path ./data --upstream-proxy socks5://127.0.0.1:1080 \
+./lantern --data-path ./data --upstream-proxy socks5://127.0.0.1:1080 \
   start --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
 ```
 
 **Windows (Command Prompt)**
 
 ```bat
-lantern-headless-windows-amd64.exe --data-path data --upstream-proxy socks5://127.0.0.1:1080 start --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
+lantern.exe --data-path data --upstream-proxy socks5://127.0.0.1:1080 start --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
 ```
 
 `--upstream-proxy` accepts `socks5://`, `http://` or `https://`. In the flashlight engine it does
@@ -139,7 +139,7 @@ INFO     Traffic leaves this machine through IP 31.171.100.110
 |---|---|
 | `start [--engine radiance\|flashlight]` | Starts the local HTTP + SOCKS5 proxy |
 | `update [--via upstream\|direct\|auto] [--check] [--json]` | Refreshes the saved server list |
-| `servers [--refresh] [--check] [--json]` | Lists servers with country/city; `--check` shows which are reachable |
+| `servers [--engine radiance\|flashlight] [--refresh] [--check] [--json]` | Lists servers with country/city. The list comes from the selected engine; `--check` tests reachability **through that engine** (Radiance runs its own per-server URL tests; flashlight's `--check` probes directly). |
 | `start --server <name>` | Pins the connection to a single server (no automatic failover) |
 | `auth login / signup / logout` | Log in to / create a Lantern account |
 | `--help`, `--version` | Help and version |
@@ -147,10 +147,11 @@ INFO     Traffic leaves this machine through IP 31.171.100.110
 Examples (the global flags go **before** the command; `start` flags go after it):
 
 ```shell
-./lantern-headless-linux-amd64 --data-path ./data start --engine radiance
-./lantern-headless-linux-amd64 --data-path ./data update --via upstream
-./lantern-headless-linux-amd64 --data-path ./data servers --check
-./lantern-headless-linux-amd64 --data-path ./data start --engine radiance --server sunny-tokyo-02
+./lantern --data-path ./data start --engine radiance
+./lantern --data-path ./data update --via upstream
+./lantern --data-path ./data servers --check
+./lantern --data-path ./data servers --engine radiance --json
+./lantern --data-path ./data start --engine radiance --server sunny-tokyo-02
 ```
 
 ## Main options
@@ -169,8 +170,8 @@ Full list: `--help`.
 
 ## Troubleshooting
 
-- **`could not find the lantern-radiance helper binary`** — download `lantern-radiance`
-  (`lantern-radiance.exe`) from Releases and put it next to the CLI, or pass
+- **`could not find the lantern-radiance helper binary`** — extract `lantern-radiance`
+  (`lantern-radiance.exe`) from the release archive and put it next to the CLI, or pass
   `--radiance-engine /path/to/lantern-radiance`.
 - **`--engine radiance` exits before it is ready** — re-run with `--debug` to see the engine's own
   logs; the details are also written to the log file in `--data-path`.
@@ -207,8 +208,8 @@ make radiance-engine`. Put the resulting helper next to the CLI.
 To build **everything** (CLI + radiance helper) for one platform in one step, use the scripts:
 
 ```shell
-./scripts/build-linux.sh     # dist/lantern-headless-linux-amd64 + dist/lantern-radiance
-./scripts/build-windows.sh   # dist/lantern-headless-windows-amd64.exe + dist/lantern-radiance.exe
+./scripts/build-linux.sh     # dist/lantern-headless-linux-amd64.tar.gz   (lantern + lantern-radiance)
+./scripts/build-windows.sh   # dist/lantern-headless-windows-amd64.zip    (lantern.exe + lantern-radiance.exe)
 ```
 
 (the Windows script needs MinGW-w64 for the CLI; its radiance helper is pure Go). The same targets

@@ -31,40 +31,40 @@
 
 Бинарные файлы **собираются автоматически средствами GitHub Actions** и публикуются на странице
 [Releases](https://github.com/FossilizedProgrammer/lantern-headless-iran/releases).
-Ничего не загружается с чьего-либо компьютера вручную:
+Ничего не загружается с чьего-либо компьютера вручную. Каждый релиз публикует **один архив на
+платформу**, в котором лежат **оба** бинарника:
 
-| Файл | Платформа | Что это |
+| Файл | Платформа | Содержимое |
 |---|---|---|
-| `lantern-headless-linux-amd64` | Linux, x86_64 | сам CLI |
-| `lantern-headless-windows-amd64.exe` | Windows, 64 бит | сам CLI |
-| `lantern-radiance` | Linux, x86_64 | вспомогательный движок v10 |
-| `lantern-radiance.exe` | Windows, 64 бит | вспомогательный движок v10 |
+| `lantern-headless-linux-amd64.tar.gz` | Linux, x86_64 | `lantern` (CLI) + `lantern-radiance` (движок v10) |
+| `lantern-headless-windows-amd64.zip` | Windows, 64 бит | `lantern.exe` (CLI) + `lantern-radiance.exe` (движок v10) |
 
-**Для `--engine radiance` положите файл `lantern-radiance` (в Windows — `lantern-radiance.exe`) в
-ту же папку, что и CLI.** CLI ищет его рядом с собой (или по `--radiance-engine`, или в `$PATH`).
+Распакуйте архив — оба файла окажутся в одной папке, как раз там, где CLI их ищет. **Для
+`--engine radiance` положите файл `lantern-radiance` (в Windows — `lantern-radiance.exe`) рядом с
+CLI.** CLI ищет его рядом с собой (или по `--radiance-engine`, или в `$PATH`).
 `--engine flashlight` в нём не нуждается.
 
-Как это работает: каждый push в `main` собирает все четыре бинарника (чтобы сборка всегда была
-рабочей), а каждый тег версии `v*` дополнительно создаёт **Release** с этими же файлами.
+Как это работает: каждый push в `main` собирает оба бинарника для каждой платформы (чтобы сборка
+всегда была рабочей), а каждый тег версии `v*` дополнительно создаёт **Release** с этими архивами.
 
 ## Быстрый старт (radiance — рекомендуется)
 
-1. Скачайте со страницы **Releases** и CLI, и подходящий бинарник `lantern-radiance`, положите их
-   в одну папку.
+1. Скачайте архив для своей системы со страницы **Releases** и распакуйте его (оба файла
+   `lantern` и `lantern-radiance` окажутся рядом).
 2. Запустите — **upstream-прокси не нужен**:
 
 **Linux**
 
 ```shell
-chmod +x lantern-headless-linux-amd64 lantern-radiance
-./lantern-headless-linux-amd64 --data-path ./data start --engine radiance \
+chmod +x lantern lantern-radiance
+./lantern --data-path ./data start --engine radiance \
   --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
 ```
 
 **Windows (Command Prompt)**
 
 ```bat
-lantern-headless-windows-amd64.exe --data-path data start --engine radiance --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
+lantern.exe --data-path data start --engine radiance --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
 ```
 
 3. Настройте браузер на локальные порты:
@@ -90,14 +90,14 @@ google-chrome --proxy-server="socks5://127.0.0.1:18071"
 **Linux**
 
 ```shell
-./lantern-headless-linux-amd64 --data-path ./data --upstream-proxy socks5://127.0.0.1:1080 \
+./lantern --data-path ./data --upstream-proxy socks5://127.0.0.1:1080 \
   start --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
 ```
 
 **Windows (Command Prompt)**
 
 ```bat
-lantern-headless-windows-amd64.exe --data-path data --upstream-proxy socks5://127.0.0.1:1080 start --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
+lantern.exe --data-path data --upstream-proxy socks5://127.0.0.1:1080 start --http-proxy-addr 127.0.0.1:18070 --socks-proxy-addr 127.0.0.1:18071
 ```
 
 `--upstream-proxy` поддерживает схемы `socks5://`, `http://` и `https://`. В движке flashlight он
@@ -139,7 +139,7 @@ INFO     Traffic leaves this machine through IP 31.171.100.110
 |---|---|
 | `start [--engine radiance\|flashlight]` | Запускает локальные порты HTTP + SOCKS5 |
 | `update [--via upstream\|direct\|auto] [--check] [--json]` | Обновляет сохранённый список серверов |
-| `servers [--refresh] [--check] [--json]` | Список серверов со страной/городом; `--check` показывает доступность |
+| `servers [--engine radiance\|flashlight] [--refresh] [--check] [--json]` | Список серверов со страной/городом; `--check` показывает доступность. Источник списка — выбранный движок |
 | `start --server <name>` | Привязывает подключение к одному серверу (без автопереключения!) |
 | `auth login / signup / logout` | Вход / регистрация в Lantern |
 | `--help`, `--version` | Справка и версия |
@@ -147,10 +147,11 @@ INFO     Traffic leaves this machine through IP 31.171.100.110
 Примеры (глобальные флаги ставятся **до** команды, флаги `start` — после неё):
 
 ```shell
-./lantern-headless-linux-amd64 --data-path ./data start --engine radiance
-./lantern-headless-linux-amd64 --data-path ./data update --via upstream
-./lantern-headless-linux-amd64 --data-path ./data servers --check
-./lantern-headless-linux-amd64 --data-path ./data start --engine radiance --server sunny-tokyo-02
+./lantern --data-path ./data start --engine radiance
+./lantern --data-path ./data update --via upstream
+./lantern --data-path ./data servers --check
+./lantern --data-path ./data servers --engine radiance --json
+./lantern --data-path ./data start --engine radiance --server sunny-tokyo-02
 ```
 
 ## Основные параметры
@@ -169,8 +170,8 @@ INFO     Traffic leaves this machine through IP 31.171.100.110
 
 ## Решение проблем
 
-- **`could not find the lantern-radiance helper binary`** — скачайте `lantern-radiance`
-  (`lantern-radiance.exe`) из Releases и положите рядом с CLI, либо укажите
+- **`could not find the lantern-radiance helper binary`** — распакуйте `lantern-radiance`
+  (`lantern-radiance.exe`) из архива релиза и положите рядом с CLI, либо укажите
   `--radiance-engine /path/to/lantern-radiance`.
 - **`--engine radiance` завершается до готовности** — запустите снова с `--debug`, чтобы увидеть
   собственные логи движка; подробности также пишутся в лог-файл в `--data-path`.
@@ -207,8 +208,8 @@ make radiance-engine`. Положите получившийся бинарни�
 Чтобы собрать **всё** (CLI + движок radiance) для одной платформы одной командой, используйте скрипты:
 
 ```shell
-./scripts/build-linux.sh     # dist/lantern-headless-linux-amd64 + dist/lantern-radiance
-./scripts/build-windows.sh   # dist/lantern-headless-windows-amd64.exe + dist/lantern-radiance.exe
+./scripts/build-linux.sh     # dist/lantern-headless-linux-amd64.tar.gz   (lantern + lantern-radiance)
+./scripts/build-windows.sh   # dist/lantern-headless-windows-amd64.zip    (lantern.exe + lantern-radiance.exe)
 ```
 
 (скрипту для Windows нужен MinGW-w64 для самого CLI; его движок radiance — чистый Go). То же самое
