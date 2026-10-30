@@ -29,7 +29,7 @@ LDFLAGS := -s -w -X github.com/oldblocker/lantern-headless-iran/shared.RevisionD
 # cross-compiles with CGO_ENABLED=0:
 #   CGO_ENABLED=0 GOOS=windows GOARCH=amd64 make radiance-engine
 RADIANCE_TAGS ?= novpn,with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme
-RADIANCE_TOOLCHAIN ?= go1.26.9
+RADIANCE_TOOLCHAIN ?= go1.26.10
 
 radiance-engine:
 	@mkdir -p bin

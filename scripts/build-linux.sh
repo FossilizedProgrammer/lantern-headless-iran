@@ -18,7 +18,7 @@ GOARCH_TARGET="${GOARCH:-amd64}"
 OUT_DIR="${1:-dist}"
 MODULE="github.com/oldblocker/lantern-headless-iran"
 RADIANCE_TAGS="novpn,with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme"
-RADIANCE_TOOLCHAIN="${RADIANCE_TOOLCHAIN:-go1.26.9}"
+RADIANCE_TOOLCHAIN="${RADIANCE_TOOLCHAIN:-go1.26.10}"
 
 cli_asset="lantern"
 engine_asset="lantern-radiance"
