@@ -126,7 +126,7 @@ require (
 	github.com/getlantern/mtime v0.0.0-20200417132445-23682092d1f7 // indirect
 	github.com/getlantern/multipath v0.0.0-20230510135141-717ed305ef50 // indirect
 	github.com/getlantern/netx v0.0.0-20240830183145-c257516187f0 // indirect
-	github.com/getlantern/ops v0.0.0-20231025133620-f368ab734534 // indirect
+	github.com/getlantern/ops v0.0.0-20261028165752-a48eabe17467 // indirect
 	github.com/getlantern/osversion v0.0.0-20250424174400-d834340603cf // indirect
 	github.com/getlantern/preconn v1.0.0 // indirect
 	github.com/getlantern/proxy/v3 v3.0.0-20240328103708-9185589b6a99 // indirect
