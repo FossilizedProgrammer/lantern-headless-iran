@@ -27,7 +27,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Jigsaw-Code/outline-sdk/transport"
+	"golang.getoutline.org/sdk/transport"
 	"github.com/getlantern/kindling"
 	"github.com/getlantern/radiance/backend"
 	"github.com/getlantern/radiance/config"
@@ -206,12 +206,15 @@ type listedServer struct {
 	// completed: true when that server's outbound passed its test, false when it
 	// did not (or was filtered out).
 	Reachable *bool `json:"reachable,omitempty"`
+	// LatencyMS is the measured latency of that server's URL test, in
+	// milliseconds (the same number the official client shows per server).
+	LatencyMS *int `json:"latency_ms,omitempty"`
 }
 
 // urlTestCollector records the per-tag results of Radiance's offline URL tests.
 type urlTestCollector struct {
 	mu   sync.Mutex
-	seen map[string]bool
+	seen map[string]uint16
 	done bool
 }
 
@@ -219,10 +222,10 @@ func (c *urlTestCollector) onEvent(evt vpn.URLTestCompleteEvent) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.seen == nil {
-		c.seen = make(map[string]bool, len(evt.Results))
+		c.seen = make(map[string]uint16, len(evt.Results))
 	}
 	for tag, delay := range evt.Results {
-		c.seen[tag] = delay > 0
+		c.seen[tag] = delay
 	}
 	c.done = true
 }
@@ -245,18 +248,24 @@ func (c *urlTestCollector) wait(ctx context.Context, timeout time.Duration) {
 	}
 }
 
-// lookup reports the reachability of a server tag, or nil when no check ran.
-func (c *urlTestCollector) lookup(tag string) *bool {
+// lookup reports the reachability and latency (in ms) of a server tag. Both are
+// nil when no check ran; latency is nil when the server did not answer.
+func (c *urlTestCollector) lookup(tag string) (*bool, *int) {
 	if c == nil {
-		return nil
+		return nil, nil
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if !c.done {
-		return nil
+		return nil, nil
 	}
-	v := c.seen[tag]
-	return &v
+	delay := c.seen[tag]
+	reachable := delay > 0
+	if !reachable {
+		return &reachable, nil
+	}
+	ms := int(delay)
+	return &reachable, &ms
 }
 
 // waitForServerList polls the backend until Radiance has loaded at least one
@@ -321,6 +330,7 @@ func printServerList(list []*servers.Server, checks *urlTestCollector) error {
 			continue
 		}
 		addr, proto := serverEndpoint(s)
+		reachable, latency := checks.lookup(s.Tag)
 		out = append(out, listedServer{
 			Name:        s.Tag,
 			Address:     addr,
@@ -329,7 +339,8 @@ func printServerList(list []*servers.Server, checks *urlTestCollector) error {
 			Country:     s.Location.Country,
 			City:        s.Location.City,
 			Trusted:     s.IsLantern,
-			Reachable:   checks.lookup(s.Tag),
+			Reachable:   reachable,
+			LatencyMS:   latency,
 		})
 	}
 	b, err := json.Marshal(out)

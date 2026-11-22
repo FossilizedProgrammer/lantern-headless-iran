@@ -21,7 +21,7 @@ import (
 // up. The format is: RADIANCE_READY socks=<addr> http=<addr>.
 const readyPrefix = "RADIANCE_READY "
 
-// serveRadiance runs the official Lantern v10 connection engine (Radiance +
+// serveRadiance runs the official Lantern v11 connection engine (Radiance +
 // lantern-box) as a child process and exposes its local proxy. The engine is
 // built with the "novpn" tag so it serves HTTP/SOCKS instead of a TUN device.
 //
@@ -37,6 +37,7 @@ func serveRadiance(ctx context.Context, cmd *ServeCmd) {
 	}
 
 	if cmd.Server != "" {
+		pinnedServer = cmd.Server
 		pterm.Info.Printfln("Pinning the connection to server %q; all other servers are ignored", cmd.Server)
 	}
 
@@ -66,7 +67,7 @@ func serveRadiance(ctx context.Context, cmd *ServeCmd) {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	pterm.Info.Printfln("Starting Lantern with the radiance engine (official v10 data plane)... Log file: %s", logFilePath)
+	pterm.Info.Printfln("Starting Lantern with the radiance engine (official v11 data plane)... Log file: %s", logFilePath)
 	proc := exec.CommandContext(ctx, enginePath, engineArgs...)
 
 	pipe, perr := proc.StdoutPipe()

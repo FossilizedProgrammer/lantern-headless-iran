@@ -31,6 +31,10 @@ var spinner = pterm.DefaultSpinner.WithRemoveWhenDone(true).WithDelay(200 * time
 // directly instead of through the Lantern network.
 var lanternProxyReachable atomic.Bool
 
+// pinnedServer is the server passed via --server, if any. A manual choice
+// disables failover, so the data path check mentions it when requests fail.
+var pinnedServer string
+
 // newUserConfigData builds the user identity used for Lantern control-plane
 // requests (config service, auth, etc.).
 func newUserConfigData() common.UserConfig {
@@ -101,6 +105,7 @@ func serve(cmd *ServeCmd) {
 		}),
 	}
 	if cmd.Server != "" {
+		pinnedServer = cmd.Server
 		opts = append(opts, pinningOptions(cmd.Server)...)
 		pterm.Info.Printfln("Pinning the connection to server %q; all other servers are ignored", cmd.Server)
 	}
@@ -203,6 +208,9 @@ func verifyDataPath(httpAddr string) {
 	pterm.Error.Printfln("Data path is NOT working: the ports above accept connections, but all %d test requests through the local proxy failed (last error: %v).",
 		attempts*len(dataPathTargets), lastErr)
 	pterm.Error.Printfln("Browser requests will fail or hang until this is fixed. Details: %s", logFilePath)
+	if pinnedServer != "" {
+		pterm.Warning.Printfln("You pinned the connection to %q with --server, which turns off failover: if that one server is blocked, nothing else is tried. Run `servers --check` and pin a reachable server, or drop --server to let Lantern switch servers by itself.", pinnedServer)
+	}
 	if args.UpstreamProxy == "" {
 		pterm.Info.Println("Hint: Lantern's own proxy servers look unreachable from this network (their IPs are usually blocked). Re-run with --upstream-proxy socks5://127.0.0.1:<port-of-a-working-proxy>; the connections to Lantern's servers then travel through that proxy while browser traffic still exits from the Lantern network.")
 	} else {

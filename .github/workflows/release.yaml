@@ -13,7 +13,7 @@ name: Build & Release
 #
 # The two binaries:
 #   • lantern(.exe)          — the CLI (flashlight engine + radiance launcher)
-#   • lantern-radiance(.exe) — the radiance engine helper (official v10 data
+#   • lantern-radiance(.exe) — the radiance engine helper (official v11 data
 #                              plane) that `start --engine radiance` spawns.
 #                              It must sit next to the CLI.
 

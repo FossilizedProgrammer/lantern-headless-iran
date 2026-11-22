@@ -17,7 +17,7 @@ VERSION ?= $(subst v,,$(LATEST_TAG))
 
 LDFLAGS := -s -w -X github.com/oldblocker/lantern-headless-iran/shared.RevisionDate=$(REVISION_DATE) -X github.com/oldblocker/lantern-headless-iran/shared.BuildDate=$(BUILD_DATE) -X github.com/oldblocker/lantern-headless-iran/shared.ApplicationVersion=$(VERSION)
 
-# The radiance engine (full parity with official Lantern v10) is a separate
+# The radiance engine (full parity with official Lantern v11) is a separate
 # module. It needs the "novpn" build tag (SOCKS/HTTP proxy instead of a TUN
 # device) plus sing-box's protocol tags, and MUST be built with Go 1.26.x:
 # sing-box reaches into golang.org/x/net/http2 via //go:linkname, and Go 1.27

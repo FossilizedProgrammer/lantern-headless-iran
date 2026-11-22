@@ -44,6 +44,10 @@ type serverInfo struct {
 	// Reachable is only set when a reachability check was requested: TCP 443
 	// answered (true) or timed out (false, i.e. likely IP-blocked).
 	Reachable *bool `json:"reachable,omitempty"`
+	// LatencyMS is the measured round-trip to the server in milliseconds. Like
+	// Reachable it is only set when a check ran, and only for servers that
+	// answered — this is what lets the list show which server is fastest.
+	LatencyMS *int `json:"latency_ms,omitempty"`
 }
 
 func serversCmd(cmd *ServersCmd) {
@@ -100,7 +104,7 @@ func serversCmd(cmd *ServersCmd) {
 // to list servers; everything before it is engine logging.
 const radianceServersPrefix = "RADIANCE_SERVERS_JSON "
 
-// serversViaRadiance fetches the server list through the official v10 engine
+// serversViaRadiance fetches the server list through the official v11 engine
 // (lantern-radiance) instead of this client's own flashlight config service, so
 // the list matches the engine that actually serves the traffic.
 func serversViaRadiance(cmd *ServersCmd) {
@@ -230,8 +234,8 @@ func withReachabilityAddrs(infos []serverInfo, timeout time.Duration) []serverIn
 	}
 	probe := probeServers(proxies, timeout)
 	for i := range infos {
-		if reachable, ok := probe[infos[i].Address]; ok {
-			infos[i].Reachable = &reachable
+		if res, ok := probe[infos[i].Address]; ok {
+			applyProbe(&infos[i], res)
 		}
 	}
 	return infos
@@ -362,21 +366,28 @@ func toServerInfos(proxies map[string]*commonconfig.ProxyConfig) []serverInfo {
 }
 
 func printServers(infos []serverInfo) {
-	checked := false
+	checked, withLatency := false, false
 	for _, info := range infos {
 		if info.Reachable != nil {
 			checked = true
-			break
+		}
+		if info.LatencyMS != nil {
+			checked, withLatency = true, true
 		}
 	}
 	headers := []string{"Name", "Address", "Protocol", "Country", "City"}
 	if checked {
 		headers = append(headers, "Reachable")
 	}
+	if withLatency {
+		headers = append(headers, "Latency")
+	}
 	counts := map[string]int{}
 	open := 0
+	var fastest *serverInfo
 	table := pterm.TableData{headers}
-	for _, info := range infos {
+	for i := range infos {
+		info := &infos[i]
 		code := info.CountryCode
 		if code == "" {
 			code = "?"
@@ -391,6 +402,16 @@ func printServers(infos []serverInfo) {
 				row = append(row, "unreachable")
 			}
 		}
+		if withLatency {
+			if info.LatencyMS != nil {
+				row = append(row, strconv.Itoa(*info.LatencyMS)+"ms")
+				if fastest == nil || *info.LatencyMS < *fastest.LatencyMS {
+					fastest = info
+				}
+			} else {
+				row = append(row, "-")
+			}
+		}
 		table = append(table, row)
 	}
 	_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
@@ -399,6 +420,9 @@ func printServers(infos []serverInfo) {
 		pterm.Info.Printfln("%d of %d servers reachable", open, len(infos))
 		if open < len(infos) {
 			pterm.Info.Println("Unreachable servers are likely IP-blocked; they may still work through --upstream-proxy or another engine.")
+		}
+		if fastest != nil {
+			pterm.Info.Printfln("Fastest server: %s (%s) — pin it with `start --server %s`", fastest.Name, formatLatency(time.Duration(*fastest.LatencyMS)*time.Millisecond), fastest.Name)
 		}
 	}
 
@@ -414,15 +438,36 @@ func printServers(infos []serverInfo) {
 	pterm.Info.Printfln("%d servers in %d countries (%s)", len(infos), len(codes), strings.Join(parts, ", "))
 }
 
+// serverProbe is the outcome of one reachability probe: whether the address
+// answered, and how long the TCP handshake took when it did.
+type serverProbe struct {
+	Reachable bool
+	Latency   time.Duration
+}
+
+// dialProbe opens (and immediately closes) a TCP connection to addr, timing how
+// long the handshake took. A failure or timeout is the signature of an
+// IP-blocked server.
+func dialProbe(addr string, timeout time.Duration) serverProbe {
+	start := time.Now()
+	conn, err := net.DialTimeout("tcp", addr, timeout)
+	if err != nil {
+		return serverProbe{}
+	}
+	latency := time.Since(start)
+	_ = conn.Close()
+	return serverProbe{Reachable: true, Latency: latency}
+}
+
 // probeServers TCP-probes every server address in parallel and reports, per
-// address, whether port 443 answered. A timeout is the signature of an
-// IP-blocked server; an open port says nothing about the handshake layer,
+// address, whether port 443 answered and how fast. A timeout is the signature
+// of an IP-blocked server; an open port says nothing about the handshake layer,
 // which only the real client dialer can verify.
-func probeServers(proxies map[string]*commonconfig.ProxyConfig, timeout time.Duration) map[string]bool {
+func probeServers(proxies map[string]*commonconfig.ProxyConfig, timeout time.Duration) map[string]serverProbe {
 	var (
 		wg  sync.WaitGroup
 		mu  sync.Mutex
-		out = map[string]bool{}
+		out = map[string]serverProbe{}
 	)
 	sem := make(chan struct{}, 50)
 	for _, cfg := range proxies {
@@ -436,12 +481,9 @@ func probeServers(proxies map[string]*commonconfig.ProxyConfig, timeout time.Dur
 				<-sem
 				wg.Done()
 			}()
-			conn, err := net.DialTimeout("tcp", addr, timeout)
-			if err == nil {
-				_ = conn.Close()
-			}
+			res := dialProbe(addr, timeout)
 			mu.Lock()
-			out[addr] = err == nil
+			out[addr] = res
 			mu.Unlock()
 		}(cfg.Addr)
 	}
@@ -449,12 +491,35 @@ func probeServers(proxies map[string]*commonconfig.ProxyConfig, timeout time.Dur
 	return out
 }
 
+// formatLatency renders a measured round-trip for the server table.
+func formatLatency(d time.Duration) string {
+	ms := int(d.Round(time.Millisecond) / time.Millisecond)
+	if ms < 1 {
+		ms = 1
+	}
+	return strconv.Itoa(ms) + "ms"
+}
+
+// applyProbe copies one probe result onto a server entry.
+func applyProbe(info *serverInfo, res serverProbe) {
+	reachable := res.Reachable
+	info.Reachable = &reachable
+	if !reachable {
+		return
+	}
+	ms := int(res.Latency.Round(time.Millisecond) / time.Millisecond)
+	if ms < 1 {
+		ms = 1
+	}
+	info.LatencyMS = &ms
+}
+
 // withReachability attaches probe results to the server infos.
 func withReachability(infos []serverInfo, proxies map[string]*commonconfig.ProxyConfig, timeout time.Duration) []serverInfo {
 	probe := probeServers(proxies, timeout)
 	for i := range infos {
-		if reachable, ok := probe[infos[i].Address]; ok {
-			infos[i].Reachable = &reachable
+		if res, ok := probe[infos[i].Address]; ok {
+			applyProbe(&infos[i], res)
 		}
 	}
 	return infos
@@ -484,6 +549,7 @@ func pinningOptions(server string) []flashlight.Option {
 					} else {
 						pterm.Success.Printfln("Using pinned server %q (%s)", name, at)
 					}
+					go warnIfPinnedServerUnreachable(name, cfg.Addr)
 				})
 				return
 			}
@@ -497,6 +563,22 @@ func pinningOptions(server string) []flashlight.Option {
 			})
 		}),
 	}
+}
+
+// warnIfPinnedServerUnreachable probes a manually chosen (--server) server once
+// and warns when its port does not answer. Pinning disables failover, so a
+// blocked server would otherwise only show up as every browser request timing
+// out; this says so before that happens.
+func warnIfPinnedServerUnreachable(name, addr string) {
+	if strings.TrimSpace(addr) == "" {
+		return
+	}
+	res := dialProbe(addr, probeTimeout)
+	if res.Reachable {
+		pterm.Info.Printfln("Pinned server %q answered a TCP probe on %s (%s)", name, addr, formatLatency(res.Latency))
+		return
+	}
+	pterm.Warning.Printfln("Pinned server %q (%s) did not answer a TCP probe after %s; it is likely IP-blocked on this network. Without --server, Lantern would fail over to another server.", name, addr, probeTimeout)
 }
 
 // serverFilter returns a proxy filter that keeps only the server whose name

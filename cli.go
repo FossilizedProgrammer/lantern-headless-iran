@@ -15,7 +15,7 @@ type ServeCmd struct {
 	StickyConfig      bool   `arg:"--sticky-config" help:"Whether to use a sticky config"`
 	ReadableConfig    bool   `arg:"--readable-config" help:"Whether to use a readable config"`
 	Server            string `arg:"--server" help:"Pin the connection to a single server by (case-insensitive) name and ignore all other servers. See the servers command for the list of names"`
-	Engine            string `arg:"--engine" default:"flashlight" help:"Connection engine: flashlight (this client's own transport, supports --upstream-proxy) or radiance (full parity with official Lantern v10/beta using Radiance + lantern-box)"`
+	Engine            string `arg:"--engine" default:"flashlight" help:"Connection engine: flashlight (this client's own transport, supports --upstream-proxy) or radiance (full parity with official Lantern v11 using Radiance + lantern-box)"`
 }
 
 type AuthCmd struct {
@@ -48,9 +48,9 @@ type UpdateCmd struct {
 type ServersCmd struct {
 	Refresh    bool   `arg:"--refresh" help:"Fetch a fresh server list from Lantern's config service instead of using the cached one"`
 	JSON       bool   `arg:"--json" help:"Print the list as JSON"`
-	Check      bool   `arg:"--check" help:"Probe each server (TCP 443) and show whether it is directly reachable or likely IP-blocked"`
+	Check      bool   `arg:"--check" help:"Probe each server (TCP 443) and show whether it is directly reachable or likely IP-blocked, with its measured latency"`
 	TimeoutSec int    `arg:"--timeout" default:"45" help:"How long to wait for a fresh list when --refresh is set"`
-	Engine     string `arg:"--engine" default:"flashlight" help:"Which engine's server list to fetch: flashlight (this client) or radiance (official v10 data plane, uses the lantern-radiance helper)"`
+	Engine     string `arg:"--engine" default:"flashlight" help:"Which engine's server list to fetch: flashlight (this client) or radiance (official v11 data plane, uses the lantern-radiance helper)"`
 }
 
 type Args struct {

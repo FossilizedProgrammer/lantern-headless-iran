@@ -1,6 +1,6 @@
 # lantern-headless-iran
 
-[English](./README.md) · [فارسی](./README-fa.md) · **Русский**
+[English](./README.md) · [فارسی](./README-fa.md) · **Русский** · [中文](./README-zh.md) · [Español](./README-es.md)
 
 > **Неофициальный** форк [`getlantern/lantern-headless-client`](https://github.com/getlantern/lantern-headless-client).
 > Проект не связан с командой Lantern.
@@ -14,8 +14,8 @@
 Команда `start` может работать на одном из двух движков; оба открывают одни и те же локальные
 порты HTTP + SOCKS5, поэтому настройка браузера одинакова.
 
-- **`--engine radiance` — официальный движок v10 (рекомендуется).** Запускает **тот же движок, что
-  и официальный клиент Lantern v10** (Radiance + lantern-box). Он сам достигает серверов Lantern
+- **`--engine radiance` — официальный движок v11 (рекомендуется).** Запускает **тот же движок, что
+  и официальный клиент Lantern v11** (Radiance + lantern-box). Он сам достигает серверов Lantern
   современным транспортом (domain fronting, прямой/умный дозвон, …), поэтому в большинстве
   фильтруемых сетей **подключается вообще без upstream-прокси** — именно этот режим реально обходит
   фильтр. Требует вспомогательный бинарник `lantern-radiance` рядом с CLI (публикуется в Releases).
@@ -36,8 +36,8 @@
 
 | Файл | Платформа | Содержимое |
 |---|---|---|
-| `lantern-headless-linux-amd64.tar.gz` | Linux, x86_64 | `lantern` (CLI) + `lantern-radiance` (движок v10) |
-| `lantern-headless-windows-amd64.zip` | Windows, 64 бит | `lantern.exe` (CLI) + `lantern-radiance.exe` (движок v10) |
+| `lantern-headless-linux-amd64.tar.gz` | Linux, x86_64 | `lantern` (CLI) + `lantern-radiance` (движок v11) |
+| `lantern-headless-windows-amd64.zip` | Windows, 64 бит | `lantern.exe` (CLI) + `lantern-radiance.exe` (движок v11) |
 
 Распакуйте архив — оба файла окажутся в одной папке, как раз там, где CLI их ищет. **Для
 `--engine radiance` положите файл `lantern-radiance` (в Windows — `lantern-radiance.exe`) рядом с
@@ -158,7 +158,7 @@ INFO     Traffic leaves this machine through IP 31.171.100.110
 
 | Параметр | Значение |
 |---|---|
-| `--engine <radiance\|flashlight>` | Движок подключения (по умолчанию `flashlight`); для паритета с v10 используйте `radiance` |
+| `--engine <radiance\|flashlight>` | Движок подключения (по умолчанию `flashlight`); для паритета с v11 используйте `radiance` |
 | `--radiance-engine <path>` | Путь к вспомогательному `lantern-radiance` (по умолчанию рядом с CLI, `LANTERN_RADIANCE_ENGINE` или `$PATH`) |
 | `--upstream-proxy` | Ваш рабочий прокси: бутстрап управляющего канала; движку flashlight нужен для доступа к заблокированным серверам |
 | `--data-path` | Где хранятся конфиг и логи (по умолчанию `~/.lantern-headless`) |
@@ -217,7 +217,7 @@ make radiance-engine`. Положите получившийся бинарни�
 
 ## Чем этот форк отличается от оригинала
 
-- **Движок radiance (`--engine radiance`)**: полный паритет с официальным клиентом Lantern v10 —
+- **Движок radiance (`--engine radiance`)**: полный паритет с официальным клиентом Lantern v11 —
   тот же data plane Radiance + lantern-box, собранный с тегом `novpn`, чтобы отдавать прокси
   HTTP/SOCKS вместо устройства TUN. Он сам подключается через современное обходное сопротивление,
   поэтому работает в фильтруемых сетях без upstream-прокси.

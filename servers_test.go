@@ -133,8 +133,9 @@ func TestProbeServers(t *testing.T) {
 	}
 	res := probeServers(proxies, 2*time.Second)
 	require.Len(t, res, 2)
-	require.True(t, res[open])
-	require.False(t, res[closed])
+	require.True(t, res[open].Reachable)
+	require.False(t, res[closed].Reachable)
+	require.GreaterOrEqual(t, res[open].Latency, time.Duration(0))
 }
 
 func TestWithReachability(t *testing.T) {
@@ -149,9 +150,15 @@ func TestWithReachability(t *testing.T) {
 	require.Len(t, infos, 1)
 	require.NotNil(t, infos[0].Reachable)
 	require.True(t, *infos[0].Reachable)
+	// A reachable server carries a measured latency; an unreachable one does not.
+	require.NotNil(t, infos[0].LatencyMS)
+	require.GreaterOrEqual(t, *infos[0].LatencyMS, 1)
+	require.Equal(t, "1ms", formatLatency(time.Millisecond))
+	require.Equal(t, "1ms", formatLatency(200*time.Microsecond))
 
 	// Without a check, Reachable stays unset and is omitted from JSON.
 	plain, err := json.Marshal(toServerInfos(proxies))
 	require.NoError(t, err)
 	require.NotContains(t, string(plain), "reachable")
+	require.NotContains(t, string(plain), "latency_ms")
 }

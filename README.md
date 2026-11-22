@@ -1,6 +1,6 @@
 # lantern-headless-iran
 
-**English** · [فارسی](./README-fa.md) · [Русский](./README-ru.md)
+**English** · [فارسی](./README-fa.md) · [Русский](./README-ru.md) · [中文](./README-zh.md) · [Español](./README-es.md)
 
 > **Unofficial** fork of [`getlantern/lantern-headless-client`](https://github.com/getlantern/lantern-headless-client). Not affiliated with Lantern.
 
@@ -13,8 +13,8 @@ your traffic then leaves through the Lantern network.
 `start` can run either of two engines; both expose the same local HTTP + SOCKS5 ports, so the
 browser setup is identical.
 
-- **`--engine radiance` — the official v10 engine (recommended).** This runs the **same engine as
-  the official Lantern v10 client** (Radiance + lantern-box). It reaches Lantern's servers on its
+- **`--engine radiance` — the official v11 engine (recommended).** This runs the **same engine as
+  the official Lantern v11 client** (Radiance + lantern-box, sing-box 1.14). It reaches Lantern's servers on its
   own with the modern transport (domain fronting, proxyless/smart dialing, …), so on most filtered
   networks **it connects with no upstream proxy at all** — this is the mode that actually gets past
   the filter. It needs the `lantern-radiance` helper binary next to the CLI (shipped in the
@@ -36,8 +36,8 @@ that bundles both binaries**:
 
 | File | Platform | Contents |
 |---|---|---|
-| `lantern-headless-linux-amd64.tar.gz` | Linux, x86_64 | `lantern` (CLI) + `lantern-radiance` (v10 engine) |
-| `lantern-headless-windows-amd64.zip` | Windows, 64-bit | `lantern.exe` (CLI) + `lantern-radiance.exe` (v10 engine) |
+| `lantern-headless-linux-amd64.tar.gz` | Linux, x86_64 | `lantern` (CLI) + `lantern-radiance` (v11 engine) |
+| `lantern-headless-windows-amd64.zip` | Windows, 64-bit | `lantern.exe` (CLI) + `lantern-radiance.exe` (v11 engine) |
 
 Extract the archive — both files land in the same folder, which is exactly where the CLI
 expects the helper. **For `--engine radiance` keep `lantern-radiance` (`lantern-radiance.exe`
@@ -158,7 +158,7 @@ Examples (the global flags go **before** the command; `start` flags go after it)
 
 | Option | Meaning |
 |---|---|
-| `--engine <radiance\|flashlight>` | Connection engine (default `flashlight`). Use `radiance` for official v10 parity |
+| `--engine <radiance\|flashlight>` | Connection engine (default `flashlight`). Use `radiance` for official v11 parity |
 | `--radiance-engine <path>` | Path to the `lantern-radiance` helper (default: next to the CLI, `LANTERN_RADIANCE_ENGINE`, or `$PATH`) |
 | `--upstream-proxy` | Your healthy proxy: control-plane bootstrap; required by the flashlight engine to reach blocked servers |
 | `--data-path` | Where config and logs live (default `~/.lantern-headless`) |
@@ -217,10 +217,14 @@ are available as `make build-local-linux` / `make build-local-windows`.
 
 ## What this fork changes
 
-- **Radiance engine (`--engine radiance`)**: full parity with the official Lantern v10 client —
-  the same Radiance + lantern-box data plane, built with the `novpn` tag so it serves an HTTP/SOCKS
-  proxy instead of a TUN device. It connects through modern censorship resistance on its own, so it
-  works on filtered networks without an upstream proxy.
+- **Radiance engine (`--engine radiance`)**: full parity with the official Lantern v11 client —
+  the same Radiance + lantern-box data plane (sing-box 1.14.2, as in v11), built with the `novpn`
+  tag so it serves an HTTP/SOCKS proxy instead of a TUN device. It connects through modern
+  censorship resistance on its own, so it works on filtered networks without an upstream proxy.
+- **Per-server latency** (v10.0.4/v11 parity): `servers --check` reports how long each server took
+  to answer, marks the fastest one, and `--json` carries it as `latency_ms`.
+- **Pinned-server warnings** (v11 parity): pinning with `--server` turns off failover, so a pinned
+  server is probed once and a warning is printed when it does not answer.
 - **Cloudflare alias for the control plane**: config/auth requests target `df.getiantem.org`
   instead of `df.iantem.io`, because Google's edge returns `403` to Iranian IPs — this is the
   same alias Lantern's own Radiance client uses for restricted regions.

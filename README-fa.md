@@ -1,6 +1,6 @@
 # lantern-headless-iran
 
-[English](./README.md) · **فارسی** · [Русский](./README-ru.md)
+[English](./README.md) · **فارسی** · [Русский](./README-ru.md) · [中文](./README-zh.md) · [Español](./README-es.md)
 
 > فورک **غیررسمی** از [`getlantern/lantern-headless-client`](https://github.com/getlantern/lantern-headless-client).
 > هیچ وابستگی به تیم لنترن ندارد.
@@ -14,7 +14,7 @@
 دستور `start` می‌تواند با یکی از دو موتور اجرا شود؛ هر دو همان پورت‌های محلی HTTP + SOCKS5 را باز
 می‌کنند، پس تنظیم مرورگر یکی است.
 
-- **`--engine radiance` — موتور رسمی نسخهٔ ۱۰ (پیشنهادی).** همان **موتور رسمی کلاینت لنترن نسخهٔ
+- **`--engine radiance` — موتور رسمی نسخهٔ ۱۱ (پیشنهادی).** همان **موتور رسمی کلاینت لنترن نسخهٔ
   ۱۰** را اجرا می‌کند (Radiance + lantern-box). خودش با ترنسپورت مدرن (domain fronting،
   dialing مستقیم/هوشمند و…) به سرورهای لنترن می‌رسد، پس در بیشتر شبکه‌های فیلترشده **بدون هیچ
   آپ‌استریمی وصل می‌شود** — این همان حالتی است که واقعاً از فیلتر عبور می‌کند. به باینری کمکی
@@ -36,8 +36,8 @@
 
 | فایل | سیستم‌عامل | محتوا |
 |---|---|---|
-| `lantern-headless-linux-amd64.tar.gz` | لینوکس، x86_64 | `lantern` (CLI) + `lantern-radiance` (موتور نسخهٔ ۱۰) |
-| `lantern-headless-windows-amd64.zip` | ویندوز، ۶۴ بیت | `lantern.exe` (CLI) + `lantern-radiance.exe` (موتور نسخهٔ ۱۰) |
+| `lantern-headless-linux-amd64.tar.gz` | لینوکس، x86_64 | `lantern` (CLI) + `lantern-radiance` (موتور نسخهٔ ۱۱) |
+| `lantern-headless-windows-amd64.zip` | ویندوز، ۶۴ بیت | `lantern.exe` (CLI) + `lantern-radiance.exe` (موتور نسخهٔ ۱۱) |
 
 آرشیو را باز کنید — هر دو فایل کنار هم در همان پوشه قرار می‌گیرند، یعنی همان‌جایی که CLI
 انتظار دارد. **برای `--engine radiance` فایل `lantern-radiance` (در ویندوز `lantern-radiance.exe`)
@@ -138,7 +138,7 @@ INFO     Traffic leaves this machine through IP 31.171.100.110
 |---|---|
 | `start [--engine radiance\|flashlight]` | اجرای پروکسی محلی HTTP + SOCKS5 |
 | `update [--via upstream\|direct\|auto] [--check] [--json]` | به‌روزرسانی فهرست ذخیره‌شدهٔ سرورها |
-| `servers [--engine radiance\|flashlight] [--refresh] [--check] [--json]` | فهرست سرورها با کشور/شهر؛ `--check` دسترسی‌پذیری را نشان می‌دهد. منبع فهرست همان موتور انتخابی است |
+| `servers [--engine radiance\|flashlight] [--refresh] [--check] [--json]` | فهرست سرورها با کشور/شهر؛ `--check` دسترسی‌پذیری و تأخیر را نشان می‌دهد. منبع فهرست همان موتور انتخابی است |
 | `start --server <name>` | قفل‌کردن اتصال به یک سرور (بدون failover خودکار!) |
 | `auth login / signup / logout` | ورود / ثبت‌نام در لنترن |
 | `--help`, `--version` | راهنما و نسخه |
@@ -157,7 +157,7 @@ INFO     Traffic leaves this machine through IP 31.171.100.110
 
 | گزینه | توضیح |
 |---|---|
-| `--engine <radiance\|flashlight>` | موتور اتصال (پیش‌فرض `flashlight`)؛ برای برابری با نسخهٔ ۱۰ از `radiance` استفاده کنید |
+| `--engine <radiance\|flashlight>` | موتور اتصال (پیش‌فرض `flashlight`)؛ برای برابری با نسخهٔ ۱۱ از `radiance` استفاده کنید |
 | `--radiance-engine <path>` | مسیر باینری کمکی `lantern-radiance` (پیش‌فرض: کنار CLI، `LANTERN_RADIANCE_ENGINE` یا `$PATH`) |
 | `--upstream-proxy` | پروکسی سالم شما: بوت‌استرپ کنترل‌پلین؛ موتور flashlight برای رسیدن به سرورهای مسدود به آن نیاز دارد |
 | `--data-path` | محل ذخیرهٔ کانفیگ و لاگ‌ها (پیش‌فرض `~/.lantern-headless`) |
@@ -216,10 +216,14 @@ make radiance-engine` استفاده کنید. باینری حاصل را کنا
 
 ## این فورک چه فرقی با آپ‌استریم دارد؟
 
-- **موتور radiance (`--engine radiance`)**: برابری کامل با کلاینت رسمی لنترن نسخهٔ ۱۰ — همان
-  دیتاپلین Radiance + lantern-box، با تگ `novpn` ساخته شده تا به‌جای دستگاه TUN یک پروکسی
-  HTTP/SOCKS بدهد. خودش با مقاوم‌سازی مدرن در برابر سانسور وصل می‌شود، پس در شبکهٔ فیلترشده بدون
-  آپ‌استریم کار می‌کند.
+- **موتور radiance (`--engine radiance`)**: برابری کامل با کلاینت رسمی لنترن نسخهٔ ۱۱ — همان
+  دیتاپلین Radiance + lantern-box (sing-box 1.14.2، مثل نسخهٔ ۱۱)، با تگ `novpn` ساخته شده تا
+  به‌جای دستگاه TUN یک پروکسی HTTP/SOCKS بدهد. خودش با مقاوم‌سازی مدرن در برابر سانسور وصل
+  می‌شود، پس در شبکهٔ فیلترشده بدون آپ‌استریم کار می‌کند.
+- **تأخیر هر سرور** (برابری با نسخهٔ ۱۰.۰.۴ و ۱۱): `servers --check` مدت پاسخ هر سرور را نشان
+  می‌دهد، سریع‌ترین سرور را جدا اعلام می‌کند و در `--json` آن را به‌صورت `latency_ms` می‌دهد.
+- **هشدار سرور قفل‌شده** (برابری با نسخهٔ ۱۱): `--server` فِیل‌اوور را خاموش می‌کند، پس سرور انتخابی
+  یک‌بار تست می‌شود و اگر پاسخ نداد هشدار داده می‌شود.
 - **آلیاس Cloudflare برای صفحهٔ کنترل**: درخواست‌های کانفیگ/ورود به‌جای `df.iantem.io` به
   `df.getiantem.org` می‌روند، چون لبهٔ گوگل به IPهای ایران `403` می‌دهد؛ همان آلیاسی که خودِ
   کلاینت Radiance لنسرن برای مناطق محدود استفاده می‌کند.
